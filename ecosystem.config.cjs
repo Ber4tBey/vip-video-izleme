@@ -11,13 +11,13 @@ module.exports = {
       }
     },
     {
-      name: "vip-video-frontend",
-      script: "node_modules/serve/build/main.js",
-      args: "-s dist -l 5173", // Use port 5173, PM2 serve works well using `serve` package. 
-      cwd: ".",
+      name: "vip-video-proxy",
+      script: "server.js",
+      cwd: ".", // Ana dizin
       watch: false,
       env: {
-        NODE_ENV: "production"
+        NODE_ENV: "production",
+        PORT: 80 // Frontend isteklerini alacağı ana port (80)
       }
     }
   ]
