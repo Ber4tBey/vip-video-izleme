@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  # ─── Node.js Express Backend ──────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vip_backend
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:-supersecret_change_this_12345}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    volumes:
+      - ./backend/db:/app/db               # SQLite database (persistent)
+      - ./backend/uploads:/app/uploads     # Uploaded files (persistent)
+    networks:
+      - vip_net
+
+  # ─── Nginx (React frontend + reverse proxy) ────────────────────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vip_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - nginx_cache:/var/cache/nginx/media  # Nginx media cache
+    depends_on:
+      - backend
+    networks:
+      - vip_net
+
+volumes:
+  nginx_cache:
+
+networks:
+  vip_net:
+    driver: bridge
