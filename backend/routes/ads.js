@@ -8,6 +8,8 @@ const {
   ensureMediaDirs,
   toAbsoluteUploadPath,
   deleteFileIfExists,
+  optimizeImageForDeliverySync,
+  imagePathToUrl,
 } = require('../utils/media');
 
 ensureMediaDirs();
@@ -29,6 +31,13 @@ const upload = multer({
   },
 });
 
+const processImageUpload = (file) => {
+  if (!file) return '';
+  const originalPath = path.join(imagesDir, file.filename);
+  const optimizedPath = optimizeImageForDeliverySync(originalPath);
+  return imagePathToUrl(optimizedPath);
+};
+
 // GET /api/ads (public)
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM ads').all();
@@ -46,7 +55,7 @@ router.put('/:slotId', adminOnly, upload.single('image'), (req, res) => {
 
   let imageUrl = req.body.imageUrl ?? (existing?.image_url || '');
   if (req.file) {
-    imageUrl = `/uploads/images/${req.file.filename}`;
+    imageUrl = processImageUpload(req.file);
     if (existing?.image_url && existing.image_url !== imageUrl) {
       deleteFileIfExists(toAbsoluteUploadPath(existing.image_url));
     }

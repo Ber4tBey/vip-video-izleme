@@ -8,6 +8,8 @@ const {
   ensureMediaDirs,
   toAbsoluteUploadPath,
   deleteFileIfExists,
+  optimizeImageForDeliverySync,
+  imagePathToUrl,
 } = require('../utils/media');
 
 ensureMediaDirs();
@@ -29,6 +31,13 @@ const upload = multer({
   },
 });
 
+const processImageUpload = (file) => {
+  if (!file) return null;
+  const originalPath = path.join(imagesDir, file.filename);
+  const optimizedPath = optimizeImageForDeliverySync(originalPath);
+  return imagePathToUrl(optimizedPath);
+};
+
 // GET /api/models
 router.get('/', (req, res) => {
   res.json(db.prepare('SELECT * FROM models ORDER BY name').all());
@@ -39,7 +48,7 @@ router.post('/', adminOnly, upload.single('image'), (req, res) => {
   const { name, bio } = req.body;
   if (!name) return res.status(400).json({ error: 'Ad zorunlu' });
 
-  const imageUrl = req.file ? `/uploads/images/${req.file.filename}` : null;
+  const imageUrl = processImageUpload(req.file);
   const result = db.prepare('INSERT INTO models (name, bio, image_url) VALUES (?, ?, ?)').run(
     name,
     bio || null,
@@ -55,7 +64,7 @@ router.put('/:id', adminOnly, upload.single('image'), (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Bulunamadi' });
 
   const { name, bio, isActive } = req.body;
-  const imageUrl = req.file ? `/uploads/images/${req.file.filename}` : existing.image_url;
+  const imageUrl = req.file ? processImageUpload(req.file) : existing.image_url;
 
   if (req.file && existing.image_url) {
     deleteFileIfExists(toAbsoluteUploadPath(existing.image_url));

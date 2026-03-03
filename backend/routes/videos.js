@@ -13,6 +13,7 @@ const {
   getThumbnailFileName,
   getThumbnailUrl,
   generateVideoThumbnailSync,
+  optimizeVideoForStreamingSync,
 } = require('../utils/media');
 
 ensureMediaDirs();
@@ -212,6 +213,7 @@ router.post('/upload/complete', adminOnly, (req, res) => {
   }
 
   cleanupChunkFiles(uploadId, totalChunks);
+  optimizeVideoForStreamingSync(mergedFilePath);
 
   const url = `/uploads/videos/${mergedFileName}`;
   const thumbnailUrl =
@@ -237,6 +239,7 @@ router.post('/', adminOnly, directUpload.single('video'), (req, res) => {
   const { title, description, categoryId, modelId, isVIP, isActive } = req.body;
   if (!title) return res.status(400).json({ error: 'Baslik zorunlu' });
 
+  optimizeVideoForStreamingSync(req.file.path);
   const url = `/uploads/videos/${req.file.filename}`;
   const thumbnailUrl = createThumbnailForVideo(req.file.filename);
   const video = createVideoRecord({
@@ -263,6 +266,7 @@ router.put('/:id', adminOnly, directUpload.single('video'), (req, res) => {
   let thumbnailUrl = existing.thumbnail_url || null;
 
   if (req.file) {
+    optimizeVideoForStreamingSync(req.file.path);
     url = `/uploads/videos/${req.file.filename}`;
     const generatedThumbnail = createThumbnailForVideo(req.file.filename);
     if (generatedThumbnail) {

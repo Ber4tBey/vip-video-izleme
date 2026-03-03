@@ -21,7 +21,7 @@ const VideoCard = ({ video, showViewCount = true }) => {
       <div className="relative overflow-hidden aspect-video bg-dark-600">
         <VideoThumbnail
           thumbnail={getMediaUrl(video.thumbnail_url)}
-          videoSrc={getSecureVideoUrl(video.url)}
+          videoSrc={canWatch ? getSecureVideoUrl(video.url) : ''}
           alt={video.title}
           className="absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-500"
           loading="lazy"

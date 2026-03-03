@@ -53,15 +53,15 @@ const generateVideoThumbnailSync = (videoAbsolutePath, thumbnailAbsolutePath) =>
     [
       '-y',
       '-ss',
-      '00:00:01.500',
+      '00:00:01.250',
       '-i',
       videoAbsolutePath,
       '-frames:v',
       '1',
       '-vf',
-      'scale=640:-2',
+      'scale=480:-2',
       '-q:v',
-      '5',
+      '7',
       thumbnailAbsolutePath,
     ],
     { windowsHide: true, stdio: 'ignore' }
@@ -69,6 +69,85 @@ const generateVideoThumbnailSync = (videoAbsolutePath, thumbnailAbsolutePath) =>
 
   return result.status === 0 && fileExists(thumbnailAbsolutePath);
 };
+
+const FASTSTART_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v']);
+
+// Rewrites MP4/MOV headers (moov atom to front) for faster mobile start.
+const optimizeVideoForStreamingSync = (videoAbsolutePath) => {
+  if (!hasFfmpeg()) return false;
+  if (!fileExists(videoAbsolutePath)) return false;
+
+  const ext = path.extname(videoAbsolutePath).toLowerCase();
+  if (!FASTSTART_EXTENSIONS.has(ext)) return false;
+
+  const tempPath = `${videoAbsolutePath}.faststart${ext}`;
+  deleteFileIfExists(tempPath);
+
+  const result = spawnSync(
+    'ffmpeg',
+    ['-y', '-i', videoAbsolutePath, '-c', 'copy', '-movflags', '+faststart', tempPath],
+    { windowsHide: true, stdio: 'ignore' }
+  );
+
+  if (result.status !== 0 || !fileExists(tempPath)) {
+    deleteFileIfExists(tempPath);
+    return false;
+  }
+
+  try {
+    deleteFileIfExists(videoAbsolutePath);
+    fs.renameSync(tempPath, videoAbsolutePath);
+    return true;
+  } catch {
+    deleteFileIfExists(tempPath);
+    return false;
+  }
+};
+
+// Converts uploaded images to compressed JPG (max width 1280).
+const optimizeImageForDeliverySync = (imageAbsolutePath) => {
+  if (!hasFfmpeg()) return imageAbsolutePath;
+  if (!fileExists(imageAbsolutePath)) return imageAbsolutePath;
+
+  const dir = path.dirname(imageAbsolutePath);
+  const baseName = path.parse(imageAbsolutePath).name;
+  const finalPath = path.join(dir, `${baseName}.jpg`);
+  const tempPath = path.join(dir, `${baseName}.optimized.jpg`);
+
+  deleteFileIfExists(tempPath);
+
+  const result = spawnSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-i',
+      imageAbsolutePath,
+      '-vf',
+      'scale=min(1280\\,iw):-2',
+      '-q:v',
+      '4',
+      tempPath,
+    ],
+    { windowsHide: true, stdio: 'ignore' }
+  );
+
+  if (result.status !== 0 || !fileExists(tempPath)) {
+    deleteFileIfExists(tempPath);
+    return imageAbsolutePath;
+  }
+
+  try {
+    if (finalPath !== imageAbsolutePath) deleteFileIfExists(imageAbsolutePath);
+    if (finalPath !== tempPath) deleteFileIfExists(finalPath);
+    fs.renameSync(tempPath, finalPath);
+    return finalPath;
+  } catch {
+    deleteFileIfExists(tempPath);
+    return imageAbsolutePath;
+  }
+};
+
+const imagePathToUrl = (imageAbsolutePath) => `/uploads/images/${path.basename(imageAbsolutePath)}`;
 
 const getVideoMimeType = (filePath) => {
   const ext = path.extname(filePath).toLowerCase();
@@ -102,5 +181,8 @@ module.exports = {
   getThumbnailFileName,
   getThumbnailUrl,
   generateVideoThumbnailSync,
+  optimizeVideoForStreamingSync,
+  optimizeImageForDeliverySync,
+  imagePathToUrl,
   getVideoMimeType,
 };
