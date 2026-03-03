@@ -23,8 +23,8 @@ const VIDEO_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
 ensureMediaDirs();
 
 app.use(cors({ origin: '*' }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const staticCacheHeaders = (res) => {
   res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');

@@ -61,6 +61,20 @@ const createThumbnailForVideo = (videoFileName) => {
   return ok ? getThumbnailUrl(videoFileName) : null;
 };
 
+const saveThumbnailFromDataUrl = (thumbnailDataUrl, videoFileName) => {
+  if (typeof thumbnailDataUrl !== 'string' || !thumbnailDataUrl) return null;
+
+  const match = /^data:image\/(?:jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/i.exec(thumbnailDataUrl.trim());
+  if (!match) return null;
+
+  const thumbPath = path.join(thumbnailsDir, getThumbnailFileName(videoFileName));
+  const buffer = Buffer.from(match[1], 'base64');
+  if (!buffer.length) return null;
+
+  fs.writeFileSync(thumbPath, buffer);
+  return getThumbnailUrl(videoFileName);
+};
+
 const createVideoRecord = ({ title, description, categoryId, modelId, isVIP, isActive, url, thumbnailUrl }) => {
   const result = db.prepare(`
     INSERT INTO videos (title, description, url, thumbnail_url, category_id, model_id, is_vip, is_active)
@@ -162,6 +176,7 @@ router.post('/upload/complete', adminOnly, (req, res) => {
     modelId,
     isVIP,
     isActive,
+    thumbnailDataUrl,
   } = req.body;
 
   const uploadId = sanitizeUploadId(rawUploadId);
@@ -199,7 +214,8 @@ router.post('/upload/complete', adminOnly, (req, res) => {
   cleanupChunkFiles(uploadId, totalChunks);
 
   const url = `/uploads/videos/${mergedFileName}`;
-  const thumbnailUrl = createThumbnailForVideo(mergedFileName);
+  const thumbnailUrl =
+    saveThumbnailFromDataUrl(thumbnailDataUrl, mergedFileName) || createThumbnailForVideo(mergedFileName);
   const video = createVideoRecord({
     title,
     description,
@@ -248,10 +264,13 @@ router.put('/:id', adminOnly, directUpload.single('video'), (req, res) => {
 
   if (req.file) {
     url = `/uploads/videos/${req.file.filename}`;
-    thumbnailUrl = createThumbnailForVideo(req.file.filename);
+    const generatedThumbnail = createThumbnailForVideo(req.file.filename);
+    if (generatedThumbnail) {
+      thumbnailUrl = generatedThumbnail;
+      if (existing.thumbnail_url) deleteFileIfExists(toAbsoluteUploadPath(existing.thumbnail_url));
+    }
 
     deleteFileIfExists(toAbsoluteUploadPath(existing.url));
-    if (existing.thumbnail_url) deleteFileIfExists(toAbsoluteUploadPath(existing.thumbnail_url));
   }
 
   db.prepare(`

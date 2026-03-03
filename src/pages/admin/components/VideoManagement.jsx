@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Crown, ToggleLeft, ToggleRight, Save, X } from 'l
 import { useVideo } from '../../../context/VideoContext';
 import FileUpload from '../../../components/ui/FileUpload';
 import VideoThumbnail from '../../../components/ui/VideoThumbnail';
-import { getMediaUrl } from '../../../utils/api';
+import { getMediaUrl, getSecureVideoUrl } from '../../../utils/api';
 import { slugify } from '../../../utils/slugify';
 
 const EMPTY_FORM = {
@@ -16,6 +16,92 @@ const EMPTY_FORM = {
   isVIP: false,
   isActive: true,
 };
+
+const generateThumbnailDataUrl = (file) =>
+  new Promise((resolve) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+    let done = false;
+
+    const cleanup = (result = '') => {
+      if (done) return;
+      done = true;
+      URL.revokeObjectURL(objectUrl);
+      video.removeAttribute('src');
+      video.load();
+      resolve(result);
+    };
+
+    const timeout = window.setTimeout(() => cleanup(''), 7000);
+
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    video.addEventListener('error', () => {
+      window.clearTimeout(timeout);
+      cleanup('');
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      const targetTime = Number.isFinite(video.duration) && video.duration > 1
+        ? Math.min(2, video.duration * 0.25)
+        : 0;
+
+      if (targetTime <= 0) {
+        const canvas = document.createElement('canvas');
+        const width = video.videoWidth || 640;
+        const height = video.videoHeight || 360;
+        canvas.width = Math.min(width, 640);
+        canvas.height = Math.max(1, Math.round((canvas.width * height) / width));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          window.clearTimeout(timeout);
+          cleanup('');
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        window.clearTimeout(timeout);
+        cleanup(canvas.toDataURL('image/jpeg', 0.78));
+        return;
+      }
+
+      try {
+        video.currentTime = targetTime;
+      } catch {
+        window.clearTimeout(timeout);
+        cleanup('');
+      }
+    });
+
+    video.addEventListener('seeked', () => {
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 360;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(width, 640);
+      canvas.height = Math.max(1, Math.round((canvas.width * height) / width));
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        window.clearTimeout(timeout);
+        cleanup('');
+        return;
+      }
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+      window.clearTimeout(timeout);
+      cleanup(dataUrl);
+    });
+
+    video.src = objectUrl;
+    video.load();
+  });
 
 const VideoManagement = () => {
   const {
@@ -79,6 +165,7 @@ const VideoManagement = () => {
         await updateVideo(editId, fd);
         flash('success', 'Video guncellendi.');
       } else {
+        const thumbnailDataUrl = await generateThumbnailDataUrl(form.file);
         await addVideoWithProgress(
           {
             file: form.file,
@@ -88,6 +175,7 @@ const VideoManagement = () => {
             modelId: form.modelId || '',
             isVIP: form.isVIP ? 'true' : 'false',
             isActive: form.isActive ? 'true' : 'false',
+            thumbnailDataUrl,
           },
           (progress) => setUploadProgress(progress)
         );
@@ -316,6 +404,7 @@ const VideoManagement = () => {
                             {video.url && (
                               <VideoThumbnail
                                 thumbnail={getMediaUrl(video.thumbnail_url)}
+                                videoSrc={getSecureVideoUrl(video.url)}
                                 alt={video.title}
                                 className="w-full h-full"
                                 loading="lazy"
