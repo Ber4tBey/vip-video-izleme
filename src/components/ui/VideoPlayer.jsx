@@ -58,7 +58,7 @@ const VideoPlayer = ({ video, onClose }) => {
             autoPlay
             playsInline
             preload="metadata"
-            className="w-full h-full pointer-events-none"
+            className="w-full h-full"
             controlsList="nodownload noplaybackrate"
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}

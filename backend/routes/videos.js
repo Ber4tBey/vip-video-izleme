@@ -1,8 +1,9 @@
 const router = require('express').Router();
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const db = require('../database');
 const { adminOnly } = require('../middleware/auth');
-const multer = require('multer');
-const path = require('path');
 const {
   videosDir,
   thumbnailsDir,
@@ -16,16 +17,17 @@ const {
 
 ensureMediaDirs();
 
-const storage = multer.diskStorage({
-  destination: videosDir,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
+const chunkDir = path.join(videosDir, '.chunks');
+if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
 
-const upload = multer({
-  storage,
+const directUpload = multer({
+  storage: multer.diskStorage({
+    destination: videosDir,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    },
+  }),
   limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2 GB
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('video/')) cb(null, true);
@@ -33,11 +35,55 @@ const upload = multer({
   },
 });
 
+const chunkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB max per chunk
+});
+
+const sanitizeUploadId = (value) => {
+  if (typeof value !== 'string') return '';
+  return /^[a-zA-Z0-9_-]{8,120}$/.test(value) ? value : '';
+};
+
+const normalizeExt = (originalName, mimeType) => {
+  const ext = path.extname(originalName || '').toLowerCase();
+  if (ext) return ext;
+  if (mimeType === 'video/webm') return '.webm';
+  if (mimeType === 'video/quicktime') return '.mov';
+  if (mimeType === 'video/x-matroska') return '.mkv';
+  return '.mp4';
+};
+
 const createThumbnailForVideo = (videoFileName) => {
   const videoPath = path.join(videosDir, videoFileName);
   const thumbPath = path.join(thumbnailsDir, getThumbnailFileName(videoFileName));
   const ok = generateVideoThumbnailSync(videoPath, thumbPath);
   return ok ? getThumbnailUrl(videoFileName) : null;
+};
+
+const createVideoRecord = ({ title, description, categoryId, modelId, isVIP, isActive, url, thumbnailUrl }) => {
+  const result = db.prepare(`
+    INSERT INTO videos (title, description, url, thumbnail_url, category_id, model_id, is_vip, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    title,
+    description || null,
+    url,
+    thumbnailUrl,
+    categoryId || null,
+    modelId || null,
+    isVIP === 'true' ? 1 : 0,
+    isActive === 'false' ? 0 : 1
+  );
+
+  return db.prepare('SELECT * FROM videos WHERE id = ?').get(result.lastInsertRowid);
+};
+
+const cleanupChunkFiles = (uploadId, totalChunks) => {
+  for (let index = 0; index < totalChunks; index += 1) {
+    const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
+    if (fs.existsSync(chunkPath)) fs.unlinkSync(chunkPath);
+  }
 };
 
 // GET /api/videos
@@ -84,40 +130,119 @@ router.get('/all', adminOnly, (req, res) => {
   res.json(rows);
 });
 
-// POST /api/videos (admin + file upload)
-router.post('/', adminOnly, upload.single('video'), (req, res) => {
+// POST /api/videos/upload/chunk (admin + chunk upload)
+router.post('/upload/chunk', adminOnly, chunkUpload.single('chunk'), (req, res) => {
+  const uploadId = sanitizeUploadId(req.body.uploadId);
+  const chunkIndex = Number.parseInt(req.body.chunkIndex, 10);
+  const totalChunks = Number.parseInt(req.body.totalChunks, 10);
+
+  if (!uploadId) return res.status(400).json({ error: 'Gecersiz uploadId' });
+  if (!req.file) return res.status(400).json({ error: 'Chunk dosyasi gerekli' });
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return res.status(400).json({ error: 'Gecersiz chunkIndex' });
+  if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 5000) {
+    return res.status(400).json({ error: 'Gecersiz totalChunks' });
+  }
+  if (chunkIndex >= totalChunks) return res.status(400).json({ error: 'Chunk index range disinda' });
+
+  const chunkPath = path.join(chunkDir, `${uploadId}.${chunkIndex}.part`);
+  fs.writeFileSync(chunkPath, req.file.buffer);
+  res.json({ success: true, chunkIndex, totalChunks });
+});
+
+// POST /api/videos/upload/complete (admin + merge chunks + save DB record)
+router.post('/upload/complete', adminOnly, (req, res) => {
+  const {
+    uploadId: rawUploadId,
+    totalChunks: rawTotalChunks,
+    originalName,
+    mimeType,
+    title,
+    description,
+    categoryId,
+    modelId,
+    isVIP,
+    isActive,
+  } = req.body;
+
+  const uploadId = sanitizeUploadId(rawUploadId);
+  const totalChunks = Number.parseInt(rawTotalChunks, 10);
+
+  if (!uploadId) return res.status(400).json({ error: 'Gecersiz uploadId' });
+  if (!title) return res.status(400).json({ error: 'Baslik zorunlu' });
+  if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 5000) {
+    return res.status(400).json({ error: 'Gecersiz totalChunks' });
+  }
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
+    if (!fs.existsSync(chunkPath)) {
+      return res.status(400).json({ error: `Eksik chunk: ${index + 1}/${totalChunks}` });
+    }
+  }
+
+  const ext = normalizeExt(originalName, mimeType);
+  const mergedFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+  const mergedFilePath = path.join(videosDir, mergedFileName);
+
+  try {
+    for (let index = 0; index < totalChunks; index += 1) {
+      const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
+      const chunkBuffer = fs.readFileSync(chunkPath);
+      fs.appendFileSync(mergedFilePath, chunkBuffer);
+    }
+  } catch (err) {
+    if (fs.existsSync(mergedFilePath)) fs.unlinkSync(mergedFilePath);
+    cleanupChunkFiles(uploadId, totalChunks);
+    return res.status(500).json({ error: err.message || 'Chunk birlestirme hatasi' });
+  }
+
+  cleanupChunkFiles(uploadId, totalChunks);
+
+  const url = `/uploads/videos/${mergedFileName}`;
+  const thumbnailUrl = createThumbnailForVideo(mergedFileName);
+  const video = createVideoRecord({
+    title,
+    description,
+    categoryId,
+    modelId,
+    isVIP,
+    isActive,
+    url,
+    thumbnailUrl,
+  });
+
+  return res.status(201).json(video);
+});
+
+// POST /api/videos (admin + direct upload, fallback)
+router.post('/', adminOnly, directUpload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Video dosyasi gerekli' });
 
-  const { title, description, categoryId, modelId, isVIP } = req.body;
+  const { title, description, categoryId, modelId, isVIP, isActive } = req.body;
   if (!title) return res.status(400).json({ error: 'Baslik zorunlu' });
 
   const url = `/uploads/videos/${req.file.filename}`;
   const thumbnailUrl = createThumbnailForVideo(req.file.filename);
-
-  const result = db.prepare(`
-    INSERT INTO videos (title, description, url, thumbnail_url, category_id, model_id, is_vip)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  const video = createVideoRecord({
     title,
-    description || null,
+    description,
+    categoryId,
+    modelId,
+    isVIP,
+    isActive,
     url,
     thumbnailUrl,
-    categoryId || null,
-    modelId || null,
-    isVIP === 'true' ? 1 : 0
-  );
+  });
 
-  const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(video);
 });
 
 // PUT /api/videos/:id (admin)
-router.put('/:id', adminOnly, upload.single('video'), (req, res) => {
+router.put('/:id', adminOnly, directUpload.single('video'), (req, res) => {
   const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Video bulunamadi' });
 
   const { title, description, categoryId, modelId, isVIP, isActive } = req.body;
-
   let url = existing.url;
   let thumbnailUrl = existing.thumbnail_url || null;
 
@@ -169,7 +294,7 @@ router.delete('/:id', adminOnly, (req, res) => {
   res.json({ success: true });
 });
 
-// POST /api/videos/:id/view - increment view count
+// POST /api/videos/:id/view
 router.post('/:id/view', (req, res) => {
   db.prepare('UPDATE videos SET view_count = view_count + 1 WHERE id = ?').run(req.params.id);
   res.json({ success: true });

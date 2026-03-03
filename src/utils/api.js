@@ -4,11 +4,25 @@
  */
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+const API_SUFFIX = '/api';
+
+const ensureApiPath = (inputPath = '') => {
+  const cleanPath = inputPath.replace(/\/+$/, '');
+  if (!cleanPath || cleanPath === '/') return API_SUFFIX;
+  if (cleanPath.endsWith(API_SUFFIX)) return cleanPath;
+  return `${cleanPath}${API_SUFFIX}`;
+};
+
+const joinUrl = (base, endpoint) => {
+  const normalizedBase = String(base || '').replace(/\/+$/, '');
+  const normalizedEndpoint = String(endpoint || '').replace(/^\/+/, '');
+  return `${normalizedBase}/${normalizedEndpoint}`;
+};
 
 const resolveApiBase = () => {
   const envApi = (import.meta.env.VITE_API_URL || '').trim();
-  if (!envApi) return '/api';
-  if (typeof window === 'undefined') return envApi;
+  if (!envApi) return API_SUFFIX;
+  if (typeof window === 'undefined') return ensureApiPath(envApi);
 
   try {
     const parsed = new URL(envApi, window.location.origin);
@@ -17,33 +31,115 @@ const resolveApiBase = () => {
 
     // If build-time env points to localhost but page is opened from LAN/public host,
     // force same-origin API so mobile clients do not resolve localhost to themselves.
-    if (apiHostIsLocal && !pageHostIsLocal) return '/api';
+    if (apiHostIsLocal && !pageHostIsLocal) return API_SUFFIX;
+
+    parsed.pathname = ensureApiPath(parsed.pathname);
+    parsed.search = '';
+    parsed.hash = '';
 
     return parsed.origin === window.location.origin
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : parsed.toString();
+      ? parsed.pathname
+      : parsed.toString().replace(/\/+$/, '');
   } catch {
-    return '/api';
+    return API_SUFFIX;
   }
 };
 
 export const API = resolveApiBase();
 
 const getToken = () => localStorage.getItem('vip_token');
+const getAuthHeader = () => {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 const request = async (method, endpoint, data, isFormData = false) => {
   const headers = {};
-  const token = getToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  Object.assign(headers, getAuthHeader());
   if (!isFormData) headers['Content-Type'] = 'application/json';
 
   const options = { method, headers };
   if (data) options.body = isFormData ? data : JSON.stringify(data);
 
-  const res = await fetch(`${API}${endpoint}`, options);
+  const res = await fetch(joinUrl(API, endpoint), options);
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
+};
+
+const xhrFormRequest = ({ endpoint, formData, onProgress }) =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', joinUrl(API, endpoint));
+
+    const authHeader = getAuthHeader().Authorization;
+    if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return;
+      onProgress(event.loaded / event.total);
+    };
+
+    xhr.onload = () => {
+      let json = {};
+      try {
+        json = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        json = {};
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(json);
+      } else {
+        reject(new Error(json.error || `HTTP ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Upload sirasinda ag hatasi olustu'));
+    xhr.send(formData);
+  });
+
+const VIDEO_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+
+export const uploadVideoInChunks = async ({ file, metadata, onProgress }) => {
+  if (!file) throw new Error('Video dosyasi gerekli');
+
+  const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  const totalChunks = Math.max(1, Math.ceil(file.size / VIDEO_CHUNK_SIZE));
+
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+    const start = chunkIndex * VIDEO_CHUNK_SIZE;
+    const end = Math.min(file.size, start + VIDEO_CHUNK_SIZE);
+    const chunkBlob = file.slice(start, end);
+
+    const fd = new FormData();
+    fd.append('chunk', chunkBlob, `${file.name}.part`);
+    fd.append('uploadId', uploadId);
+    fd.append('chunkIndex', String(chunkIndex));
+    fd.append('totalChunks', String(totalChunks));
+
+    await xhrFormRequest({
+      endpoint: '/videos/upload/chunk',
+      formData: fd,
+      onProgress: (chunkRatio) => {
+        if (!onProgress) return;
+        const overall = ((chunkIndex + chunkRatio) / totalChunks) * 100;
+        onProgress(Math.min(99, Math.max(0, Math.round(overall))));
+      },
+    });
+  }
+
+  const createdVideo = await api.post('/videos/upload/complete', {
+    uploadId,
+    totalChunks,
+    originalName: file.name,
+    mimeType: file.type,
+    fileSize: file.size,
+    ...metadata,
+  });
+
+  onProgress?.(100);
+  return createdVideo;
 };
 
 /**

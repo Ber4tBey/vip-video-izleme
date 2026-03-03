@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../utils/api';
+import api, { uploadVideoInChunks } from '../utils/api';
 
 const VideoContext = createContext(null);
 export const useVideo = () => useContext(VideoContext);
@@ -38,6 +38,12 @@ export const VideoProvider = ({ children }) => {
   // ─── Videos CRUD (admin) ────────────────────────────────────────────────────
   const addVideo = async (formData) => {
     const v = await api.upload('/videos', formData);
+    setVideos((prev) => [v, ...prev]);
+    return v;
+  };
+
+  const addVideoWithProgress = async ({ file, ...metadata }, onProgress) => {
+    const v = await uploadVideoInChunks({ file, metadata, onProgress });
     setVideos((prev) => [v, ...prev]);
     return v;
   };
@@ -115,7 +121,7 @@ export const VideoProvider = ({ children }) => {
       videos, models, categories,
       activeVideos, activeModels, activeCategories,
       trendingVideos,
-      addVideo, updateVideo, deleteVideo, toggleVideoActive, incrementViewCount,
+      addVideo, addVideoWithProgress, updateVideo, deleteVideo, toggleVideoActive, incrementViewCount,
       addModel, updateModel, deleteModel, toggleModelActive,
       addCategory, updateCategory, deleteCategory, toggleCategoryActive,
       refetch: fetchAll,
