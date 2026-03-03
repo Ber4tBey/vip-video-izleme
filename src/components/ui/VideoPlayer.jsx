@@ -1,7 +1,7 @@
 import { X, Crown, Eye, Calendar, Tag, User } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useVideo } from '../../context/VideoContext';
-import { getSecureVideoUrl } from '../../utils/api';
+import { getMediaUrl, getSecureVideoUrl } from '../../utils/api';
 
 const VideoPlayer = ({ video, onClose }) => {
   const { incrementViewCount, categories, models } = useVideo();
@@ -53,8 +53,11 @@ const VideoPlayer = ({ video, onClose }) => {
         <div className="aspect-video bg-black">
           <video
             src={getSecureVideoUrl(video.url)}
+            poster={getMediaUrl(video.thumbnail_url)}
             controls
             autoPlay
+            playsInline
+            preload="metadata"
             className="w-full h-full pointer-events-none"
             controlsList="nodownload noplaybackrate"
             disablePictureInPicture

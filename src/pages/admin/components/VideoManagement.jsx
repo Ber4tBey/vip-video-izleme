@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Crown, ToggleLeft, ToggleRight, Save, X } from 'l
 import { useVideo } from '../../../context/VideoContext';
 import FileUpload from '../../../components/ui/FileUpload';
 import VideoThumbnail from '../../../components/ui/VideoThumbnail';
-import { getSecureVideoUrl } from '../../../utils/api';
+import { getMediaUrl } from '../../../utils/api';
 import { slugify } from '../../../utils/slugify';
 
 const EMPTY_FORM = {
@@ -190,7 +190,12 @@ const VideoManagement = () => {
                         <div className="flex items-center gap-3">
                           <a href={`/video/${slugify(v.title)}`} target="_blank" rel="noopener noreferrer" className="w-16 h-9 rounded bg-dark-600 flex-shrink-0 overflow-hidden block hover:opacity-80 transition-opacity">
                             {v.url && (
-                              <VideoThumbnail src={getSecureVideoUrl(v.url)} alt={v.title} className="w-full h-full" />
+                              <VideoThumbnail
+                                thumbnail={getMediaUrl(v.thumbnail_url)}
+                                alt={v.title}
+                                className="w-full h-full"
+                                loading="lazy"
+                              />
                             )}
                           </a>
                           <div className="min-w-0">

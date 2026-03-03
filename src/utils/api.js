@@ -3,7 +3,31 @@
  * All fetch calls go through here so auth token is automatically attached.
  */
 
-export const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+const resolveApiBase = () => {
+  const envApi = (import.meta.env.VITE_API_URL || '').trim();
+  if (!envApi) return '/api';
+  if (typeof window === 'undefined') return envApi;
+
+  try {
+    const parsed = new URL(envApi, window.location.origin);
+    const pageHostIsLocal = LOCAL_HOSTS.has(window.location.hostname);
+    const apiHostIsLocal = LOCAL_HOSTS.has(parsed.hostname);
+
+    // If build-time env points to localhost but page is opened from LAN/public host,
+    // force same-origin API so mobile clients do not resolve localhost to themselves.
+    if (apiHostIsLocal && !pageHostIsLocal) return '/api';
+
+    return parsed.origin === window.location.origin
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : parsed.toString();
+  } catch {
+    return '/api';
+  }
+};
+
+export const API = resolveApiBase();
 
 const getToken = () => localStorage.getItem('vip_token');
 
@@ -29,10 +53,21 @@ const request = async (method, endpoint, data, isFormData = false) => {
 export const getMediaUrl = (path) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  
-  // If API is http://localhost:3001/api, we want http://localhost:3001
-  const baseUrl = API.replace(/\/api\/?$/, '');
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+
+  let mediaBase = API.replace(/\/api\/?$/, '');
+  if (typeof window !== 'undefined') {
+    try {
+      const parsed = new URL(API, window.location.origin);
+      parsed.pathname = parsed.pathname.replace(/\/api\/?$/, '');
+      parsed.search = '';
+      parsed.hash = '';
+      mediaBase = `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch {
+      mediaBase = window.location.origin;
+    }
+  }
+
+  return `${mediaBase}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
 /**

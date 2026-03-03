@@ -1,46 +1,42 @@
-// Service Worker — cache /uploads/* in browser Cache Storage
-const CACHE_NAME = 'vip-media-v1';
-const MEDIA_PATTERN = /\/uploads\//;
+// Service Worker - cache only image media. Do not intercept video/range requests.
+const CACHE_NAME = 'vip-media-v2';
+const IMAGE_MEDIA_PATTERN = /\/uploads\/(images|thumbnails)\//;
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
     )
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-  if (!MEDIA_PATTERN.test(e.request.url)) return;
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  if (request.headers.has('range')) return;
 
-  // Network-first for videos (support range requests), cache-first for images
-  const isVideo = e.request.url.includes('/uploads/videos/');
+  if (!IMAGE_MEDIA_PATTERN.test(request.url)) return;
 
-  if (isVideo) {
-    // Videos: network first, fallback to cache
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          if (res.ok && res.status === 200) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
-          }
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
-  } else {
-    // Images: cache first
-    e.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const cached = await cache.match(e.request);
-        if (cached) return cached;
-        const response = await fetch(e.request);
-        if (response.ok) cache.put(e.request, response.clone());
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
+
+    const networkFetch = fetch(request)
+      .then((response) => {
+        if (response.ok && response.status === 200) {
+          cache.put(request, response.clone());
+        }
         return response;
-      })
-    );
-  }
+      });
+
+    if (cached) {
+      event.waitUntil(networkFetch.catch(() => {}));
+      return cached;
+    }
+
+    return networkFetch.catch(() => cached || Response.error());
+  })());
 });

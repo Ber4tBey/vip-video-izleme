@@ -90,6 +90,8 @@ const AdManagement = () => {
                 <div className="w-32 h-14 rounded-lg bg-dark-600 overflow-hidden flex-shrink-0 border border-dark-500">
                   <img
                     src={getMediaUrl(ad.image_url)}
+                    loading="lazy"
+                    decoding="async"
                     alt="Önizleme"
                     className="w-full h-full object-contain"
                     onError={(e) => { e.target.src = ''; e.target.alt = 'Hatalı URL'; }}
@@ -175,3 +177,4 @@ const AdManagement = () => {
 };
 
 export default AdManagement;
+

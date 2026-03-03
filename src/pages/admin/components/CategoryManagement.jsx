@@ -76,7 +76,7 @@ const CategoryManagement = () => {
             <div key={c.id} className={`card p-4 flex items-center gap-3 ${!c.is_active ? 'opacity-50' : ''}`}>
               <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-dark-500 border border-dark-400">
                 {c.image_url ? (
-                  <img src={getMediaUrl(c.image_url)} alt={c.name} className="w-full h-full object-cover"
+                  <img src={getMediaUrl(c.image_url)} alt={c.name} loading="lazy" decoding="async" className="w-full h-full object-cover"
                     onError={(e) => { e.target.style.display='none'; }} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

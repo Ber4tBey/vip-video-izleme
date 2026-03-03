@@ -7,37 +7,37 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 8080; // Genellikle HTTP izinli port 8080
+const PORT = process.env.PORT || 8080;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+const distDir = path.join(__dirname, 'dist');
 
-// 1. Backend Proxy (API ve Uploads için)
-// 1. Backend Proxy (API ve Uploads için)
-// Express mount pathi siler. pathRewrite eklendiginde, Express'in sildigi o isaretlenmis kismi tekrar basa ekleriz:
-app.use('/api', createProxyMiddleware({ 
-  target: BACKEND_URL, 
+const createApiProxy = (prefix) => createProxyMiddleware({
+  target: BACKEND_URL,
   changeOrigin: true,
-  pathRewrite: function (path, req) { return '/api' + path; }
-}));
-
-// Yüklemeler (uploads) için de aynısı
-app.use('/uploads', createProxyMiddleware({ 
-  target: BACKEND_URL, 
-  changeOrigin: true,
-  pathRewrite: function (path, req) { return '/uploads' + path; }
-}));
-
-// 2. Statik Frontend Dosyalari (React/Vite Production Build)
-// dist klasorunu ana kok dizin olarak sun
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// 3. React SPA Fallback
-// Frontende ait bir sayfa yenilendiginde veya dogrudan girildiginde index.html'ye yonlendir.
-app.get('*splat', (req, res) => {
-  res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+  xfwd: true,
+  pathRewrite: (incomingPath) => `${prefix}${incomingPath}`,
 });
 
-// Sunucuyu baslat
+app.use('/api', createApiProxy('/api'));
+app.use('/uploads', createApiProxy('/uploads'));
+
+app.use(express.static(distDir, {
+  index: false,
+  etag: true,
+  maxAge: '1y',
+  immutable: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+
+app.get('*splat', (req, res) => {
+  res.sendFile(path.resolve(distDir, 'index.html'));
+});
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Proxy] Web server baslatildi: http://localhost:${PORT}`);
-  console.log(`[Proxy] Yonlendirilen Backend API: ${BACKEND_URL}`);
+  console.log(`[Proxy] Web server started: http://localhost:${PORT}`);
+  console.log(`[Proxy] Backend target: ${BACKEND_URL}`);
 });

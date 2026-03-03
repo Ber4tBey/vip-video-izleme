@@ -67,6 +67,8 @@ const CategoriesPage = () => {
                 <img
                   src={getMediaUrl(selectedCat.image_url)}
                   alt={selectedCat.name}
+                  loading="lazy"
+                  decoding="async"
                   className="w-10 h-10 rounded-lg object-cover border border-dark-500"
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
@@ -121,6 +123,8 @@ const CategoriesPage = () => {
                       <img
                         src={getMediaUrl(cat.image_url)}
                         alt={cat.name}
+                        loading="lazy"
+                        decoding="async"
                         className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />

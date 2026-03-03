@@ -1,10 +1,10 @@
 import { Eye, Lock, Crown, Play } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import VideoThumbnail from './VideoThumbnail';
 import { slugify } from '../../utils/slugify';
-import { getSecureVideoUrl } from '../../utils/api';
+import { getMediaUrl } from '../../utils/api';
 
 const VideoCard = ({ video, showViewCount = true }) => {
   const { isVIP, isAdmin } = useAuth();
@@ -20,9 +20,10 @@ const VideoCard = ({ video, showViewCount = true }) => {
       {/* Thumbnail */}
       <div className="relative overflow-hidden aspect-video bg-dark-600">
         <VideoThumbnail
-          src={getSecureVideoUrl(video.url)}
+          thumbnail={getMediaUrl(video.thumbnail_url)}
           alt={video.title}
           className="absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-500"
+          loading="lazy"
         />
 
         {/* VIP overlay */}

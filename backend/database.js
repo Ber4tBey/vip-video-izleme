@@ -66,6 +66,12 @@ db.exec(`
   );
 `);
 
+// Lightweight migration: add video thumbnail field if missing.
+const videoColumns = db.prepare(`PRAGMA table_info(videos)`).all().map((c) => c.name);
+if (!videoColumns.includes('thumbnail_url')) {
+  db.prepare('ALTER TABLE videos ADD COLUMN thumbnail_url TEXT').run();
+}
+
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 const seedAdmin = () => {
   const existing = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();

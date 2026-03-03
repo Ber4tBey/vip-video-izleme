@@ -26,6 +26,8 @@ const AdBanner = ({ slotId, size = 'banner', className = '' }) => {
     <img
       src={getMediaUrl(ad.image_url)}
       alt={ad.alt_text || 'Reklam'}
+      loading="lazy"
+      decoding="async"
       className="w-full h-full object-contain"
       onError={(e) => {
         // Resim yüklenemezse placeholder göster

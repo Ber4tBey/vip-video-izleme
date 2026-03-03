@@ -65,6 +65,8 @@ const ModelsPage = () => {
                 <img
                   src={getMediaUrl(selectedModel.image_url)}
                   alt={selectedModel.name}
+                  loading="lazy"
+                  decoding="async"
                   className="w-12 h-12 rounded-full object-cover border-2 border-primary-600"
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
@@ -119,6 +121,8 @@ const ModelsPage = () => {
                         <img
                           src={getMediaUrl(model.image_url)}
                           alt={model.name}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           onError={(e) => {
                             e.target.style.display = 'none';

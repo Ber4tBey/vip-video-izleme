@@ -126,6 +126,8 @@ const FileUpload = ({ accept = 'image/*', type = 'image', value, onChange, label
             {isImage ? (
               <img
                 src={value}
+                loading="lazy"
+                decoding="async"
                 alt="Önizleme"
                 className="w-full max-h-48 object-contain p-1"
                 onError={(e) => { e.target.src = ''; onChange({ file: null, previewUrl: '' }); }}
@@ -202,3 +204,4 @@ const FileUpload = ({ accept = 'image/*', type = 'image', value, onChange, label
 };
 
 export default FileUpload;
+

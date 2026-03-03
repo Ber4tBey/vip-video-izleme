@@ -9,7 +9,7 @@ import VideoThumbnail from '../../components/ui/VideoThumbnail';
 import Pagination from '../../components/ui/Pagination';
 import SEO from '../../components/SEO';
 import { slugify } from '../../utils/slugify';
-import { getSecureVideoUrl } from '../../utils/api';
+import { getMediaUrl } from '../../utils/api';
 
 const PER_PAGE = 20;
 
@@ -69,9 +69,10 @@ const TrendsPage = () => {
                 </div>
                 <div className="aspect-video relative rounded-lg overflow-hidden mb-3 bg-dark-600">
                   <VideoThumbnail
-                    src={getSecureVideoUrl(video.url)}
+                    thumbnail={getMediaUrl(video.thumbnail_url)}
                     alt={video.title}
                     className="absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-500"
+                    loading={idx === 0 ? 'eager' : 'lazy'}
                   />
                   {/* VIP overlay if locked */}
                   {!canWatch && (

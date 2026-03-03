@@ -57,8 +57,11 @@ const VideoPage = () => {
           <div className="rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video">
             <video
               src={getSecureVideoUrl(video.url)}
+              poster={getMediaUrl(video.thumbnail_url)}
               controls
               autoPlay
+              playsInline
+              preload="metadata"
               className="w-full h-full"
               controlsList="nodownload noplaybackrate"
               disablePictureInPicture
