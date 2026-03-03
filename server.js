@@ -11,16 +11,19 @@ const PORT = process.env.PORT || 8080; // Genellikle HTTP izinli port 8080
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 // 1. Backend Proxy (API ve Uploads için)
-// /api yoluna gelen istekleri backend apiye pasla
+// 1. Backend Proxy (API ve Uploads için)
+// Express mount pathi siler. pathRewrite eklendiginde, Express'in sildigi o isaretlenmis kismi tekrar basa ekleriz:
 app.use('/api', createProxyMiddleware({ 
   target: BACKEND_URL, 
-  changeOrigin: true 
+  changeOrigin: true,
+  pathRewrite: function (path, req) { return '/api' + path; }
 }));
 
-// /uploads yoluna gelen istekleri backend uploads (video) icin pasla
+// Yüklemeler (uploads) için de aynısı
 app.use('/uploads', createProxyMiddleware({ 
   target: BACKEND_URL, 
-  changeOrigin: true 
+  changeOrigin: true,
+  pathRewrite: function (path, req) { return '/uploads' + path; }
 }));
 
 // 2. Statik Frontend Dosyalari (React/Vite Production Build)
