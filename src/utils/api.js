@@ -198,17 +198,27 @@ export const api = {
 
 /**
  * Returns the effective playback URL.
- * For Streamtape videos, fetches a freshly resolved URL from backend.
+ * Scrapes Streamtape HTML via backend and uses the raw generated URL.
  */
 export const getVideoPlaybackUrl = async (video) => {
   if (!video) return '';
   const streamtapeSource = video.streamtape_url || (isStreamtapeSource(video.url) ? video.url : '');
   if (streamtapeSource) {
-    const baseUrl = getApiUrl(`/videos/${video.id}/stream`);
-    const token = getToken();
-    if (!token) return baseUrl;
-    const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+    try {
+      const res = await api.get(`/videos/${video.id}/playback`);
+      if (res && res.url) {
+        return res.url;
+      }
+      throw new Error('Fallback needed');
+    } catch (err) {
+      console.warn("Streamtape fetch warning:", err);
+      // Fallback: Just return the embed URL as a last-resort if scrape fails
+      const match = streamtapeSource.match(/\/v\/([^/]+)/);
+      if (match && match[1]) {
+        return `https://streamtape.com/e/${match[1]}`;
+      }
+      return streamtapeSource.replace('/v/', '/e/');
+    }
   }
   return getSecureVideoUrl(video.url);
 };

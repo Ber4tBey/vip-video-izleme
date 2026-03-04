@@ -1,7 +1,7 @@
 import { X, Crown, Eye, Calendar, Tag, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useVideo } from '../../context/VideoContext';
-import { getMediaUrl, getVideoPlaybackUrl } from '../../utils/api';
+import { getMediaUrl, getVideoPlaybackUrl, isStreamtapeSource } from '../../utils/api';
 
 const VideoPlayer = ({ video, onClose }) => {
   const { incrementViewCount, categories, models } = useVideo();
@@ -86,10 +86,6 @@ const VideoPlayer = ({ video, onClose }) => {
           {playbackLoading ? (
             <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
               Video hazirlaniyor...
-            </div>
-          ) : playbackError ? (
-            <div className="w-full h-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
-              {playbackError}
             </div>
           ) : (
             <video

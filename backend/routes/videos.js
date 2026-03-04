@@ -422,61 +422,6 @@ router.put('/:id', adminOnly, parseStreamtapeForm, async (req, res) => {
   res.json(db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id));
 });
 
-// GET/HEAD /api/videos/:id/stream
-// Proxies Streamtape bytes through backend so client IP differences do not break playback.
-const streamFromStreamtape = async (req, res) => {
-  const video = db.prepare(`
-    SELECT id, url, streamtape_url, is_vip, is_active
-    FROM videos
-    WHERE id = ?
-  `).get(req.params.id);
-
-  if (!video || !video.is_active) {
-    return res.status(404).json({ error: 'Video bulunamadi' });
-  }
-
-  if (video.is_vip) {
-    if (!req.user || (!req.user.isVIP && !req.user.isAdmin)) {
-      return res.status(403).json({ error: 'Bu VIP videoyu izlemek icin yetkiniz yok.' });
-    }
-  }
-
-  const streamtapeSource = normalizeStreamtapeUrl(video.streamtape_url || video.url);
-  if (!streamtapeSource) {
-    return res.status(400).json({ error: 'Bu video icin Streamtape linki bulunamadi' });
-  }
-
-  try {
-    const directUrl = await resolveDirectUrlWithCache(streamtapeSource);
-    await proxyStreamFromUrl(req, res, directUrl, streamtapeSource);
-    return undefined;
-  } catch (err) {
-    if (!res.headersSent && err?.code === RETRYABLE_PROXY_ERROR_CODE) {
-      try {
-        clearCachedStreamtapeDirectUrl(streamtapeSource);
-        const freshDirectUrl = await resolveDirectUrlWithCache(streamtapeSource, { forceRefresh: true });
-        await proxyStreamFromUrl(req, res, freshDirectUrl, streamtapeSource);
-        return undefined;
-      } catch (retryErr) {
-        if (!res.headersSent) {
-          return res.status(502).json({ error: retryErr.message || 'Stream proxy hatasi' });
-        }
-        res.destroy();
-        return undefined;
-      }
-    }
-
-    if (!res.headersSent) {
-      return res.status(502).json({ error: err.message || 'Stream proxy hatasi' });
-    }
-    res.destroy();
-    return undefined;
-  }
-};
-
-router.head('/:id/stream', checkVideoToken, streamFromStreamtape);
-router.get('/:id/stream', checkVideoToken, streamFromStreamtape);
-
 // GET /api/videos/:id/playback
 router.get('/:id/playback', optionalAuth, async (req, res) => {
   const video = db.prepare(`
@@ -511,7 +456,6 @@ router.get('/:id/playback', optionalAuth, async (req, res) => {
     return res.status(502).json({ error: err.message || 'Streamtape linki yenilenemedi' });
   }
 });
-
 // PATCH /api/videos/:id/toggle (admin)
 router.patch('/:id/toggle', adminOnly, (req, res) => {
   const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
