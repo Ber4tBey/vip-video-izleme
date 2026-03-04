@@ -3,6 +3,8 @@ const https = require('https');
 
 const REQUEST_TIMEOUT_MS = 12000;
 const MAX_REDIRECTS = 5;
+const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 100, maxFreeSockets: 20, timeout: 60000 });
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 100, maxFreeSockets: 20, timeout: 60000 });
 
 const STREAMTAPE_HOSTS = new Set(['streamtape.com', 'streamta.pe']);
 
@@ -57,13 +59,14 @@ const fetchHtml = (targetUrl, redirectCount = 0) =>
         port: parsed.port,
         path: `${parsed.pathname}${parsed.search}`,
         method: 'GET',
+        agent: parsed.protocol === 'http:' ? HTTP_AGENT : HTTPS_AGENT,
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36',
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.8',
           'Accept-Encoding': 'identity',
-          Connection: 'close',
+          Connection: 'keep-alive',
         },
       },
       (res) => {
@@ -174,51 +177,9 @@ const resolveStreamtapeMetadata = async (streamtapeUrl) => {
   };
 };
 
-const fetchFinalRedirectUrl = (targetUrl) =>
-  new Promise((resolve) => {
-    let parsed;
-    try {
-      parsed = new URL(targetUrl);
-    } catch {
-      resolve(targetUrl);
-      return;
-    }
-
-    const client = parsed.protocol === 'http:' ? http : https;
-    const req = client.request(
-      {
-        protocol: parsed.protocol,
-        hostname: parsed.hostname,
-        port: parsed.port,
-        path: `${parsed.pathname}${parsed.search}`,
-        method: 'HEAD',
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36',
-          Accept: '*/*',
-        },
-      },
-      (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          resolve(new URL(res.headers.location, parsed).toString());
-        } else {
-          resolve(targetUrl);
-        }
-        res.resume();
-      }
-    );
-
-    req.on('error', () => resolve(targetUrl));
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy();
-      resolve(targetUrl);
-    });
-    req.end();
-  });
-
 const resolveStreamtapeDirectUrl = async (streamtapeUrl) => {
   const data = await resolveStreamtapeMetadata(streamtapeUrl);
-  return await fetchFinalRedirectUrl(data.directUrl);
+  return data.directUrl;
 };
 
 const resolveStreamtapeThumbnail = async (streamtapeUrl) => {

@@ -67,6 +67,8 @@ const request = async (method, endpoint, data, isFormData = false) => {
   return json;
 };
 
+const getApiUrl = (endpoint = '') => joinUrl(API, endpoint);
+
 const xhrFormRequest = ({ endpoint, formData, onProgress }) =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -201,10 +203,14 @@ export const api = {
 export const getVideoPlaybackUrl = async (video) => {
   if (!video) return '';
   const streamtapeSource = video.streamtape_url || (isStreamtapeSource(video.url) ? video.url : '');
-  if (!streamtapeSource) return getSecureVideoUrl(video.url);
-
-  const payload = await api.get(`/videos/${video.id}/playback`);
-  return payload?.url || '';
+  if (streamtapeSource) {
+    const baseUrl = getApiUrl(`/videos/${video.id}/stream`);
+    const token = getToken();
+    if (!token) return baseUrl;
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+  }
+  return getSecureVideoUrl(video.url);
 };
 
 /** Upload a File object, returns the server URL */
