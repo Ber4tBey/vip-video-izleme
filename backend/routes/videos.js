@@ -1,7 +1,9 @@
 const router = require('express').Router();
+const http = require('http');
+const https = require('https');
 const multer = require('multer');
 const db = require('../database');
-const { adminOnly, optionalAuth } = require('../middleware/auth');
+const { adminOnly, optionalAuth, checkVideoToken } = require('../middleware/auth');
 const { toAbsoluteUploadPath, deleteFileIfExists } = require('../utils/media');
 const {
   normalizeStreamtapeUrl,
@@ -44,6 +46,92 @@ const normalizeOptionalText = (value) => {
 
 const isLocalVideoUrl = (value) => typeof value === 'string' && value.startsWith('/uploads/videos/');
 const isLocalUploadPath = (value) => typeof value === 'string' && value.startsWith('/uploads/');
+const STREAM_REDIRECT_LIMIT = 5;
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+const copyUpstreamHeaders = (sourceHeaders, res) => {
+  Object.entries(sourceHeaders || {}).forEach(([key, value]) => {
+    if (value === undefined) return;
+    if (HOP_BY_HOP_HEADERS.has(String(key).toLowerCase())) return;
+    res.setHeader(key, value);
+  });
+};
+
+const proxyStreamFromUrl = (req, res, targetUrl, streamtapeSource, redirectCount = 0) =>
+  new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      reject(new Error('Gecersiz stream URL'));
+      return;
+    }
+
+    const client = parsed.protocol === 'http:' ? http : https;
+    const requestHeaders = {
+      'User-Agent':
+        req.headers['user-agent'] ||
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36',
+      Referer: streamtapeSource,
+      Accept: req.headers.accept || '*/*',
+      Connection: 'close',
+    };
+    if (req.headers.range) requestHeaders.Range = req.headers.range;
+
+    const upstreamReq = client.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: `${parsed.pathname}${parsed.search}`,
+        method: req.method,
+        headers: requestHeaders,
+      },
+      (upstreamRes) => {
+        const status = upstreamRes.statusCode || 0;
+        const location = upstreamRes.headers.location;
+
+        if (status >= 300 && status < 400 && location) {
+          if (redirectCount >= STREAM_REDIRECT_LIMIT) {
+            upstreamRes.resume();
+            reject(new Error('Cok fazla stream yonlendirmesi'));
+            return;
+          }
+          const nextUrl = new URL(location, parsed).toString();
+          upstreamRes.resume();
+          resolve(proxyStreamFromUrl(req, res, nextUrl, streamtapeSource, redirectCount + 1));
+          return;
+        }
+
+        res.status(status || 502);
+        copyUpstreamHeaders(upstreamRes.headers, res);
+
+        if (req.method === 'HEAD') {
+          upstreamRes.resume();
+          res.end();
+          resolve();
+          return;
+        }
+
+        upstreamRes.on('error', reject);
+        upstreamRes.pipe(res);
+        upstreamRes.on('end', resolve);
+      }
+    );
+
+    upstreamReq.on('error', reject);
+    upstreamReq.setTimeout(20000, () => upstreamReq.destroy(new Error('Upstream stream timeout')));
+    upstreamReq.end();
+  });
 
 const resolveStreamtapeDataSafely = async (streamtapeUrl) => {
   try {
@@ -221,6 +309,46 @@ router.put('/:id', adminOnly, parseStreamtapeForm, async (req, res) => {
 
   res.json(db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id));
 });
+
+// GET/HEAD /api/videos/:id/stream
+// Streams Streamtape content through backend to avoid client-IP based token failures.
+const streamFromStreamtape = async (req, res) => {
+  const video = db.prepare(`
+    SELECT id, url, streamtape_url, is_vip, is_active
+    FROM videos
+    WHERE id = ?
+  `).get(req.params.id);
+
+  if (!video || !video.is_active) {
+    return res.status(404).json({ error: 'Video bulunamadi' });
+  }
+
+  if (video.is_vip) {
+    if (!req.user || (!req.user.isVIP && !req.user.isAdmin)) {
+      return res.status(403).json({ error: 'Bu VIP videoyu izlemek icin yetkiniz yok.' });
+    }
+  }
+
+  const streamtapeSource = normalizeStreamtapeUrl(video.streamtape_url || video.url);
+  if (!streamtapeSource) {
+    return res.status(400).json({ error: 'Bu video icin Streamtape linki bulunamadi' });
+  }
+
+  try {
+    const directUrl = await resolveStreamtapeDirectUrl(streamtapeSource);
+    await proxyStreamFromUrl(req, res, directUrl, streamtapeSource);
+    return undefined;
+  } catch (err) {
+    if (!res.headersSent) {
+      return res.status(502).json({ error: err.message || 'Stream proxy hatasi' });
+    }
+    res.destroy();
+    return undefined;
+  }
+};
+
+router.head('/:id/stream', checkVideoToken, streamFromStreamtape);
+router.get('/:id/stream', checkVideoToken, streamFromStreamtape);
 
 // GET /api/videos/:id/playback
 router.get('/:id/playback', optionalAuth, async (req, res) => {
