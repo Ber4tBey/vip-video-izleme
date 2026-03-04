@@ -174,9 +174,51 @@ const resolveStreamtapeMetadata = async (streamtapeUrl) => {
   };
 };
 
+const fetchFinalRedirectUrl = (targetUrl) =>
+  new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      resolve(targetUrl);
+      return;
+    }
+
+    const client = parsed.protocol === 'http:' ? http : https;
+    const req = client.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: `${parsed.pathname}${parsed.search}`,
+        method: 'HEAD',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36',
+          Accept: '*/*',
+        },
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          resolve(new URL(res.headers.location, parsed).toString());
+        } else {
+          resolve(targetUrl);
+        }
+        res.resume();
+      }
+    );
+
+    req.on('error', () => resolve(targetUrl));
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy();
+      resolve(targetUrl);
+    });
+    req.end();
+  });
+
 const resolveStreamtapeDirectUrl = async (streamtapeUrl) => {
   const data = await resolveStreamtapeMetadata(streamtapeUrl);
-  return data.directUrl;
+  return await fetchFinalRedirectUrl(data.directUrl);
 };
 
 const resolveStreamtapeThumbnail = async (streamtapeUrl) => {
