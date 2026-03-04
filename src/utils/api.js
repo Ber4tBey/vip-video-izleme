@@ -204,7 +204,7 @@ export const getVideoPlaybackUrl = async (video) => {
   if (!streamtapeSource) return getSecureVideoUrl(video.url);
 
   const payload = await api.get(`/videos/${video.id}/playback`);
-  return payload?.url || payload?.intermediateUrl || '';
+  return payload?.url || '';
 };
 
 /** Upload a File object, returns the server URL */

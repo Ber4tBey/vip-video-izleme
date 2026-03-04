@@ -1,6 +1,4 @@
 const router = require('express').Router();
-const http = require('http');
-const https = require('https');
 const multer = require('multer');
 const db = require('../database');
 const { adminOnly, optionalAuth } = require('../middleware/auth');
@@ -46,70 +44,6 @@ const normalizeOptionalText = (value) => {
 
 const isLocalVideoUrl = (value) => typeof value === 'string' && value.startsWith('/uploads/videos/');
 const isLocalUploadPath = (value) => typeof value === 'string' && value.startsWith('/uploads/');
-const PLAYBACK_REDIRECT_LIMIT = 7;
-const REQUEST_TIMEOUT_MS = 20000;
-
-const resolveFinalPlaybackUrl = (urlToCheck, streamtapeSource, redirectCount = 0) =>
-  new Promise((resolve, reject) => {
-    let parsed;
-    try {
-      parsed = new URL(urlToCheck);
-    } catch {
-      reject(new Error('Gecersiz playback URL'));
-      return;
-    }
-
-    const client = parsed.protocol === 'http:' ? http : https;
-    const req = client.request(
-      {
-        protocol: parsed.protocol,
-        hostname: parsed.hostname,
-        port: parsed.port,
-        path: `${parsed.pathname}${parsed.search}`,
-        method: 'GET',
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36',
-          Referer: streamtapeSource,
-          Accept: '*/*',
-          Connection: 'close',
-        },
-      },
-      (upstreamRes) => {
-        const status = upstreamRes.statusCode || 0;
-        const location = upstreamRes.headers.location;
-
-        if (status >= 300 && status < 400 && location) {
-          if (redirectCount >= PLAYBACK_REDIRECT_LIMIT) {
-            upstreamRes.resume();
-            reject(new Error('Cok fazla playback yonlendirmesi'));
-            return;
-          }
-
-          const nextUrl = new URL(location, parsed).toString();
-          upstreamRes.resume();
-          resolve(resolveFinalPlaybackUrl(nextUrl, streamtapeSource, redirectCount + 1));
-          return;
-        }
-
-        upstreamRes.resume();
-        if (status >= 200 && status < 400) {
-          resolve(parsed.toString());
-          return;
-        }
-
-        reject(new Error(`Playback HTTP hatasi: ${status}`));
-      }
-    );
-
-    req.on('error', reject);
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy(new Error('Playback redirect kontrolu zaman asimina ugradi'));
-    });
-    req.end();
-  });
-
-
 
 const resolveStreamtapeDataSafely = async (streamtapeUrl) => {
   try {
@@ -313,10 +247,8 @@ router.get('/:id/playback', optionalAuth, async (req, res) => {
 
   try {
     const refreshedUrl = await resolveStreamtapeDirectUrl(streamtapeSource);
-    const finalUrl = await resolveFinalPlaybackUrl(refreshedUrl, streamtapeSource);
     return res.json({
-      url: finalUrl,
-      intermediateUrl: refreshedUrl,
+      url: refreshedUrl,
       source: 'streamtape',
       refreshedAt: new Date().toISOString(),
     });

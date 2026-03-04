@@ -106,6 +106,7 @@ const VideoPage = () => {
                 autoPlay
                 playsInline
                 preload="metadata"
+                referrerPolicy="no-referrer"
                 className="w-full h-full"
                 controlsList="nodownload noplaybackrate"
                 disablePictureInPicture
