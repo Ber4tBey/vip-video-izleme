@@ -1,5 +1,13 @@
 const jwt = require('jsonwebtoken');
 
+const verifyTokenSafely = (token) => {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
+};
+
 const auth = (req, res, next) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -21,6 +29,17 @@ const adminOnly = (req, res, next) => {
   });
 };
 
+const optionalAuth = (req, res, next) => {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    req.user = null;
+    return next();
+  }
+
+  req.user = verifyTokenSafely(header.slice(7));
+  return next();
+};
+
 /**
  * Validates token passed via query parameter (?token=...) for video requests.
  * Invalid or missing token should behave as guest for free videos.
@@ -33,13 +52,9 @@ const checkVideoToken = (req, res, next) => {
     return next();
   }
 
-  try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    req.user = null;
-  }
+  req.user = verifyTokenSafely(token);
 
   return next();
 };
 
-module.exports = { auth, adminOnly, checkVideoToken };
+module.exports = { auth, adminOnly, optionalAuth, checkVideoToken };

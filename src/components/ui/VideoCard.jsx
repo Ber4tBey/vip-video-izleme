@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import VideoThumbnail from './VideoThumbnail';
 import { slugify } from '../../utils/slugify';
-import { getMediaUrl, getSecureVideoUrl } from '../../utils/api';
+import { getMediaUrl, getSecureVideoUrl, isStreamtapeSource } from '../../utils/api';
 
 const VideoCard = ({ video, showViewCount = true }) => {
   const { isVIP, isAdmin } = useAuth();
@@ -14,6 +14,7 @@ const VideoCard = ({ video, showViewCount = true }) => {
   const slug = slugify(video.title);
   const videoUrl = `/video/${slug}`;
   const tgLink = settings.telegramLink || 'https://t.me/yourusername';
+  const isStreamtapeVideo = isStreamtapeSource(video.streamtape_url || video.url);
 
   const inner = (
     <div className={`card group cursor-pointer hover:border-dark-400 hover:shadow-xl hover:shadow-black/40 transition-all duration-300 hover:-translate-y-1 ${!canWatch ? 'opacity-90' : ''}`}>
@@ -21,7 +22,7 @@ const VideoCard = ({ video, showViewCount = true }) => {
       <div className="relative overflow-hidden aspect-video bg-dark-600">
         <VideoThumbnail
           thumbnail={getMediaUrl(video.thumbnail_url)}
-          videoSrc={canWatch ? getSecureVideoUrl(video.url) : ''}
+          videoSrc={canWatch && !isStreamtapeVideo ? getSecureVideoUrl(video.url) : ''}
           alt={video.title}
           className="absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-500"
           loading="lazy"

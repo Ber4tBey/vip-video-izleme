@@ -15,6 +15,7 @@ const {
   generateVideoThumbnailSync,
   getVideoMimeType,
 } = require('./utils/media');
+const { normalizeStreamtapeUrl, resolveStreamtapeThumbnail } = require('./utils/streamtape');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -130,9 +131,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Sunucu hatasi' });
 });
 
-const backfillMissingThumbnails = () => {
+const backfillMissingThumbnails = async () => {
   const rows = db.prepare(`
-    SELECT id, url, thumbnail_url
+    SELECT id, url, thumbnail_url, streamtape_url
     FROM videos
     WHERE thumbnail_url IS NULL OR thumbnail_url = ''
   `).all();
@@ -140,23 +141,33 @@ const backfillMissingThumbnails = () => {
   if (!rows.length) return;
 
   let updated = 0;
-  rows.forEach((row) => {
+  for (const row of rows) {
+    const streamtapeSource = normalizeStreamtapeUrl(row.streamtape_url || row.url);
+    if (streamtapeSource) {
+      const remoteThumbnail = await resolveStreamtapeThumbnail(streamtapeSource).catch(() => '');
+      if (!remoteThumbnail) continue;
+      db.prepare('UPDATE videos SET thumbnail_url = ?, streamtape_url = ? WHERE id = ?')
+        .run(remoteThumbnail, streamtapeSource, row.id);
+      updated += 1;
+      continue;
+    }
+
     const fileName = path.basename(row.url || '');
-    if (!fileName) return;
+    if (!fileName) continue;
 
     const videoPath = path.join(videosDir, fileName);
-    if (!fs.existsSync(videoPath)) return;
+    if (!fs.existsSync(videoPath)) continue;
 
     const thumbnailPath = path.join(thumbnailsDir, getThumbnailFileName(fileName));
     if (!fs.existsSync(thumbnailPath)) {
       const generated = generateVideoThumbnailSync(videoPath, thumbnailPath);
-      if (!generated) return;
+      if (!generated) continue;
     }
 
     const thumbnailUrl = getThumbnailUrl(fileName);
     db.prepare('UPDATE videos SET thumbnail_url = ? WHERE id = ?').run(thumbnailUrl, row.id);
     updated += 1;
-  });
+  }
 
   if (updated > 0) {
     console.log(`[Media] Generated thumbnails for ${updated} existing video(s).`);
@@ -165,5 +176,9 @@ const backfillMissingThumbnails = () => {
 
 app.listen(PORT, () => {
   console.log(`Backend calisiyor: http://localhost:${PORT}`);
-  setTimeout(backfillMissingThumbnails, 250);
+  setTimeout(() => {
+    backfillMissingThumbnails().catch((err) => {
+      console.error('[Media] Thumbnail backfill failed:', err.message || err);
+    });
+  }, 250);
 });

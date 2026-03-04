@@ -1,104 +1,84 @@
 const router = require('express').Router();
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
 const db = require('../database');
-const { adminOnly } = require('../middleware/auth');
+const { adminOnly, optionalAuth } = require('../middleware/auth');
+const { toAbsoluteUploadPath, deleteFileIfExists } = require('../utils/media');
 const {
-  videosDir,
-  thumbnailsDir,
-  ensureMediaDirs,
-  toAbsoluteUploadPath,
-  deleteFileIfExists,
-  getThumbnailFileName,
-  getThumbnailUrl,
-  generateVideoThumbnailSync,
-  optimizeVideoForStreamingSync,
-} = require('../utils/media');
+  normalizeStreamtapeUrl,
+  resolveStreamtapeDirectUrl,
+  resolveStreamtapeMetadata,
+} = require('../utils/streamtape');
 
-ensureMediaDirs();
+const parseStreamtapeForm = (req, res, next) => {
+  multer().none()(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: 'Dosya yukleme kapatildi. Sadece Streamtape linki kullanin.' });
+    }
+    return next();
+  });
+};
 
-const chunkDir = path.join(videosDir, '.chunks');
-if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
+const toDbBoolean = (value, defaultValue = 0) => {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return value ? 1 : 0;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true' || v === '1') return 1;
+    if (v === 'false' || v === '0') return 0;
+  }
+  return defaultValue;
+};
 
-const directUpload = multer({
-  storage: multer.diskStorage({
-    destination: videosDir,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-    },
-  }),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2 GB
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('video/')) cb(null, true);
-    else cb(new Error('Sadece video dosyalari kabul edilir'));
-  },
-});
+const pickBodyValue = (body, ...keys) => {
+  for (const key of keys) {
+    if (body[key] !== undefined) return body[key];
+  }
+  return undefined;
+};
 
-const chunkUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB max per chunk
-});
-
-const sanitizeUploadId = (value) => {
+const normalizeOptionalText = (value) => {
   if (typeof value !== 'string') return '';
-  return /^[a-zA-Z0-9_-]{8,120}$/.test(value) ? value : '';
+  return value.trim();
 };
 
-const normalizeExt = (originalName, mimeType) => {
-  const ext = path.extname(originalName || '').toLowerCase();
-  if (ext) return ext;
-  if (mimeType === 'video/webm') return '.webm';
-  if (mimeType === 'video/quicktime') return '.mov';
-  if (mimeType === 'video/x-matroska') return '.mkv';
-  return '.mp4';
+const isLocalVideoUrl = (value) => typeof value === 'string' && value.startsWith('/uploads/videos/');
+const isLocalUploadPath = (value) => typeof value === 'string' && value.startsWith('/uploads/');
+
+const resolveStreamtapeDataSafely = async (streamtapeUrl) => {
+  try {
+    return await resolveStreamtapeMetadata(streamtapeUrl);
+  } catch {
+    return null;
+  }
 };
 
-const createThumbnailForVideo = (videoFileName) => {
-  const videoPath = path.join(videosDir, videoFileName);
-  const thumbPath = path.join(thumbnailsDir, getThumbnailFileName(videoFileName));
-  const ok = generateVideoThumbnailSync(videoPath, thumbPath);
-  return ok ? getThumbnailUrl(videoFileName) : null;
-};
-
-const saveThumbnailFromDataUrl = (thumbnailDataUrl, videoFileName) => {
-  if (typeof thumbnailDataUrl !== 'string' || !thumbnailDataUrl) return null;
-
-  const match = /^data:image\/(?:jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/i.exec(thumbnailDataUrl.trim());
-  if (!match) return null;
-
-  const thumbPath = path.join(thumbnailsDir, getThumbnailFileName(videoFileName));
-  const buffer = Buffer.from(match[1], 'base64');
-  if (!buffer.length) return null;
-
-  fs.writeFileSync(thumbPath, buffer);
-  return getThumbnailUrl(videoFileName);
-};
-
-const createVideoRecord = ({ title, description, categoryId, modelId, isVIP, isActive, url, thumbnailUrl }) => {
+const createVideoRecord = ({
+  title,
+  description,
+  categoryId,
+  modelId,
+  isVIP,
+  isActive,
+  streamtapeUrl,
+  thumbnailUrl,
+}) => {
   const result = db.prepare(`
-    INSERT INTO videos (title, description, url, thumbnail_url, category_id, model_id, is_vip, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (title, description, url, thumbnail_url, streamtape_url, category_id, model_id, is_vip, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     title,
     description || null,
-    url,
-    thumbnailUrl,
+    streamtapeUrl,
+    thumbnailUrl || null,
+    streamtapeUrl,
     categoryId || null,
     modelId || null,
-    isVIP === 'true' ? 1 : 0,
-    isActive === 'false' ? 0 : 1
+    toDbBoolean(isVIP, 0),
+    toDbBoolean(isActive, 1)
   );
 
   return db.prepare('SELECT * FROM videos WHERE id = ?').get(result.lastInsertRowid);
-};
-
-const cleanupChunkFiles = (uploadId, totalChunks) => {
-  for (let index = 0; index < totalChunks; index += 1) {
-    const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
-    if (fs.existsSync(chunkPath)) fs.unlinkSync(chunkPath);
-  }
 };
 
 // GET /api/videos
@@ -145,103 +125,32 @@ router.get('/all', adminOnly, (req, res) => {
   res.json(rows);
 });
 
-// POST /api/videos/upload/chunk (admin + chunk upload)
-router.post('/upload/chunk', adminOnly, chunkUpload.single('chunk'), (req, res) => {
-  const uploadId = sanitizeUploadId(req.body.uploadId);
-  const chunkIndex = Number.parseInt(req.body.chunkIndex, 10);
-  const totalChunks = Number.parseInt(req.body.totalChunks, 10);
-
-  if (!uploadId) return res.status(400).json({ error: 'Gecersiz uploadId' });
-  if (!req.file) return res.status(400).json({ error: 'Chunk dosyasi gerekli' });
-  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return res.status(400).json({ error: 'Gecersiz chunkIndex' });
-  if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 5000) {
-    return res.status(400).json({ error: 'Gecersiz totalChunks' });
-  }
-  if (chunkIndex >= totalChunks) return res.status(400).json({ error: 'Chunk index range disinda' });
-
-  const chunkPath = path.join(chunkDir, `${uploadId}.${chunkIndex}.part`);
-  fs.writeFileSync(chunkPath, req.file.buffer);
-  res.json({ success: true, chunkIndex, totalChunks });
+// Upload endpoints are disabled by request: Streamtape only.
+router.post('/upload/chunk', adminOnly, (req, res) => {
+  res.status(410).json({ error: 'Video dosyasi yukleme kapatildi. Sadece Streamtape linki kullanin.' });
 });
 
-// POST /api/videos/upload/complete (admin + merge chunks + save DB record)
 router.post('/upload/complete', adminOnly, (req, res) => {
-  const {
-    uploadId: rawUploadId,
-    totalChunks: rawTotalChunks,
-    originalName,
-    mimeType,
-    title,
-    description,
-    categoryId,
-    modelId,
-    isVIP,
-    isActive,
-    thumbnailDataUrl,
-  } = req.body;
-
-  const uploadId = sanitizeUploadId(rawUploadId);
-  const totalChunks = Number.parseInt(rawTotalChunks, 10);
-
-  if (!uploadId) return res.status(400).json({ error: 'Gecersiz uploadId' });
-  if (!title) return res.status(400).json({ error: 'Baslik zorunlu' });
-  if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 5000) {
-    return res.status(400).json({ error: 'Gecersiz totalChunks' });
-  }
-
-  for (let index = 0; index < totalChunks; index += 1) {
-    const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
-    if (!fs.existsSync(chunkPath)) {
-      return res.status(400).json({ error: `Eksik chunk: ${index + 1}/${totalChunks}` });
-    }
-  }
-
-  const ext = normalizeExt(originalName, mimeType);
-  const mergedFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-  const mergedFilePath = path.join(videosDir, mergedFileName);
-
-  try {
-    for (let index = 0; index < totalChunks; index += 1) {
-      const chunkPath = path.join(chunkDir, `${uploadId}.${index}.part`);
-      const chunkBuffer = fs.readFileSync(chunkPath);
-      fs.appendFileSync(mergedFilePath, chunkBuffer);
-    }
-  } catch (err) {
-    if (fs.existsSync(mergedFilePath)) fs.unlinkSync(mergedFilePath);
-    cleanupChunkFiles(uploadId, totalChunks);
-    return res.status(500).json({ error: err.message || 'Chunk birlestirme hatasi' });
-  }
-
-  cleanupChunkFiles(uploadId, totalChunks);
-  optimizeVideoForStreamingSync(mergedFilePath);
-
-  const url = `/uploads/videos/${mergedFileName}`;
-  const thumbnailUrl =
-    saveThumbnailFromDataUrl(thumbnailDataUrl, mergedFileName) || createThumbnailForVideo(mergedFileName);
-  const video = createVideoRecord({
-    title,
-    description,
-    categoryId,
-    modelId,
-    isVIP,
-    isActive,
-    url,
-    thumbnailUrl,
-  });
-
-  return res.status(201).json(video);
+  res.status(410).json({ error: 'Video dosyasi yukleme kapatildi. Sadece Streamtape linki kullanin.' });
 });
 
-// POST /api/videos (admin + direct upload, fallback)
-router.post('/', adminOnly, directUpload.single('video'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Video dosyasi gerekli' });
+// POST /api/videos (admin, streamtape-only)
+router.post('/', adminOnly, parseStreamtapeForm, async (req, res) => {
+  const { title, description, isVIP, isActive } = req.body;
+  const categoryId = pickBodyValue(req.body, 'categoryId', 'category_id', 'category');
+  const modelId = pickBodyValue(req.body, 'modelId', 'model_id', 'model');
+  const streamtapeInput = normalizeOptionalText(pickBodyValue(req.body, 'streamtapeUrl', 'streamtape_url'));
+  const streamtapeUrl = normalizeStreamtapeUrl(streamtapeInput);
 
-  const { title, description, categoryId, modelId, isVIP, isActive } = req.body;
   if (!title) return res.status(400).json({ error: 'Baslik zorunlu' });
+  if (!streamtapeUrl) return res.status(400).json({ error: 'Gecerli Streamtape linki zorunlu' });
 
-  optimizeVideoForStreamingSync(req.file.path);
-  const url = `/uploads/videos/${req.file.filename}`;
-  const thumbnailUrl = createThumbnailForVideo(req.file.filename);
+  const metadata = await resolveStreamtapeDataSafely(streamtapeUrl);
+  const thumbnailUrl =
+    normalizeOptionalText(pickBodyValue(req.body, 'thumbnailUrl', 'thumbnail_url')) ||
+    metadata?.thumbnailUrl ||
+    null;
+
   const video = createVideoRecord({
     title,
     description,
@@ -249,51 +158,103 @@ router.post('/', adminOnly, directUpload.single('video'), (req, res) => {
     modelId,
     isVIP,
     isActive,
-    url,
+    streamtapeUrl,
     thumbnailUrl,
   });
 
   res.status(201).json(video);
 });
 
-// PUT /api/videos/:id (admin)
-router.put('/:id', adminOnly, directUpload.single('video'), (req, res) => {
+// PUT /api/videos/:id (admin, streamtape-only)
+router.put('/:id', adminOnly, parseStreamtapeForm, async (req, res) => {
   const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Video bulunamadi' });
 
-  const { title, description, categoryId, modelId, isVIP, isActive } = req.body;
-  let url = existing.url;
+  const { title, description, isVIP, isActive } = req.body;
+  const categoryId = pickBodyValue(req.body, 'categoryId', 'category_id', 'category');
+  const modelId = pickBodyValue(req.body, 'modelId', 'model_id', 'model');
+
+  const hasStreamtapeInput = pickBodyValue(req.body, 'streamtapeUrl', 'streamtape_url') !== undefined;
+  const streamtapeInput = normalizeOptionalText(pickBodyValue(req.body, 'streamtapeUrl', 'streamtape_url') || '');
+
+  let streamtapeUrl = normalizeStreamtapeUrl(existing.streamtape_url || existing.url);
   let thumbnailUrl = existing.thumbnail_url || null;
 
-  if (req.file) {
-    optimizeVideoForStreamingSync(req.file.path);
-    url = `/uploads/videos/${req.file.filename}`;
-    const generatedThumbnail = createThumbnailForVideo(req.file.filename);
-    if (generatedThumbnail) {
-      thumbnailUrl = generatedThumbnail;
-      if (existing.thumbnail_url) deleteFileIfExists(toAbsoluteUploadPath(existing.thumbnail_url));
+  if (!streamtapeUrl && !hasStreamtapeInput) {
+    return res.status(400).json({ error: 'Bu kayit local video. Streamtape linki girmeniz gerekli.' });
+  }
+
+  if (hasStreamtapeInput) {
+    if (!streamtapeInput) {
+      return res.status(400).json({ error: 'Streamtape linki bos olamaz' });
     }
 
-    deleteFileIfExists(toAbsoluteUploadPath(existing.url));
+    const normalizedStreamtapeUrl = normalizeStreamtapeUrl(streamtapeInput);
+    if (!normalizedStreamtapeUrl) {
+      return res.status(400).json({ error: 'Gecersiz Streamtape linki' });
+    }
+
+    if (isLocalVideoUrl(existing.url)) deleteFileIfExists(toAbsoluteUploadPath(existing.url));
+    if (isLocalUploadPath(existing.thumbnail_url)) deleteFileIfExists(toAbsoluteUploadPath(existing.thumbnail_url));
+
+    streamtapeUrl = normalizedStreamtapeUrl;
+    const metadata = await resolveStreamtapeDataSafely(streamtapeUrl);
+    thumbnailUrl = metadata?.thumbnailUrl || thumbnailUrl;
   }
 
   db.prepare(`
     UPDATE videos
-    SET title=?, description=?, url=?, thumbnail_url=?, category_id=?, model_id=?, is_vip=?, is_active=?
+    SET title=?, description=?, url=?, thumbnail_url=?, streamtape_url=?, category_id=?, model_id=?, is_vip=?, is_active=?
     WHERE id=?
   `).run(
     title || existing.title,
     description ?? existing.description,
-    url,
+    streamtapeUrl,
     thumbnailUrl,
+    streamtapeUrl,
     categoryId ?? existing.category_id,
     modelId ?? existing.model_id,
-    isVIP !== undefined ? (isVIP === 'true' ? 1 : 0) : existing.is_vip,
-    isActive !== undefined ? (isActive === 'true' ? 1 : 0) : existing.is_active,
+    isVIP !== undefined ? toDbBoolean(isVIP, existing.is_vip) : existing.is_vip,
+    isActive !== undefined ? toDbBoolean(isActive, existing.is_active) : existing.is_active,
     req.params.id
   );
 
   res.json(db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id));
+});
+
+// GET /api/videos/:id/playback
+router.get('/:id/playback', optionalAuth, async (req, res) => {
+  const video = db.prepare(`
+    SELECT id, url, streamtape_url, is_vip, is_active
+    FROM videos
+    WHERE id = ?
+  `).get(req.params.id);
+
+  if (!video || !video.is_active) {
+    return res.status(404).json({ error: 'Video bulunamadi' });
+  }
+
+  if (video.is_vip) {
+    if (!req.user || (!req.user.isVIP && !req.user.isAdmin)) {
+      return res.status(403).json({ error: 'Bu VIP videoyu izlemek icin yetkiniz yok.' });
+    }
+  }
+
+  const streamtapeSource = normalizeStreamtapeUrl(video.streamtape_url || video.url);
+  if (!streamtapeSource) {
+    return res.status(400).json({ error: 'Bu video icin Streamtape linki bulunamadi' });
+  }
+
+  try {
+    const refreshedUrl = await resolveStreamtapeDirectUrl(streamtapeSource);
+    return res.json({
+      url: refreshedUrl,
+      source: 'streamtape',
+      refreshedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    return res.status(502).json({ error: err.message || 'Streamtape linki yenilenemedi' });
+  }
 });
 
 // PATCH /api/videos/:id/toggle (admin)
@@ -310,8 +271,8 @@ router.delete('/:id', adminOnly, (req, res) => {
   const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
   if (!video) return res.status(404).json({ error: 'Bulunamadi' });
 
-  deleteFileIfExists(toAbsoluteUploadPath(video.url));
-  if (video.thumbnail_url) deleteFileIfExists(toAbsoluteUploadPath(video.thumbnail_url));
+  if (isLocalVideoUrl(video.url)) deleteFileIfExists(toAbsoluteUploadPath(video.url));
+  if (isLocalUploadPath(video.thumbnail_url)) deleteFileIfExists(toAbsoluteUploadPath(video.thumbnail_url));
 
   db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
   res.json({ success: true });

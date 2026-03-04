@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Crown, Send, ArrowLeft, Eye, Lock, Tag, Users } from 'lucide-react';
 import SEO from '../../components/SEO';
@@ -5,7 +6,7 @@ import { useVideo } from '../../context/VideoContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { matchSlug } from '../../utils/slugify';
-import { getMediaUrl, getSecureVideoUrl } from '../../utils/api';
+import { getMediaUrl, getVideoPlaybackUrl } from '../../utils/api';
 
 const VideoPage = () => {
   const { slug } = useParams();
@@ -14,60 +15,104 @@ const VideoPage = () => {
   const { settings } = useSettings();
   const navigate = useNavigate();
 
+  const [playbackUrl, setPlaybackUrl] = useState('');
+  const [playbackError, setPlaybackError] = useState('');
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const hasCountedViewRef = useRef(false);
+
   const video = activeVideos.find((v) => matchSlug(v, slug));
+  const canWatch = !!video && (!video.is_vip || isVIP || isAdmin);
+  const tgLink = settings.telegramLink || 'https://t.me/yourusername';
+
+  useEffect(() => {
+    hasCountedViewRef.current = false;
+  }, [video?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!video || !canWatch) return undefined;
+
+    setPlaybackLoading(true);
+    setPlaybackError('');
+    setPlaybackUrl('');
+
+    getVideoPlaybackUrl(video)
+      .then((url) => {
+        if (cancelled) return;
+        if (!url) {
+          setPlaybackError('Video linki alinamadi.');
+          return;
+        }
+        setPlaybackUrl(url);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPlaybackError(err.message || 'Video acilirken hata olustu.');
+      })
+      .finally(() => {
+        if (!cancelled) setPlaybackLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canWatch, video?.id, video?.url, video?.streamtape_url]);
 
   if (!video) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
-        <p className="text-gray-500 text-lg mb-4">Video bulunamadı.</p>
-        <Link to="/videos" className="btn-ghost text-sm">← Videolara dön</Link>
+        <p className="text-gray-500 text-lg mb-4">Video bulunamadi.</p>
+        <Link to="/videos" className="btn-ghost text-sm">Videolara don</Link>
       </div>
     );
   }
 
-  const canWatch = !video.is_vip || isVIP || isAdmin;
-  const tgLink = settings.telegramLink || 'https://t.me/yourusername';
-
-  // Increment view count on first render
-  if (canWatch) {
-    // Using a ref to track if counted — done via VideoContext during play
-  }
-
-  const siteUrl = window.location.origin;
-  const pageUrl = window.location.href;
+  const onVideoPlay = () => {
+    if (hasCountedViewRef.current) return;
+    hasCountedViewRef.current = true;
+    incrementViewCount?.(video.id);
+  };
 
   return (
     <>
-      <SEO 
-        title={`${video.title} — VIP İfşa ve Porno`}
-        description={video.description || `${video.title} ifşa ve sex videoları full HD kalitede.`}
-        keywords={`${video.model_name || ''}, ${video.category_name || ''}, türk ifşa, porno izle, hd sex, leak`}
+      <SEO
+        title={`${video.title} - VIP Ifsa ve Porno`}
+        description={video.description || `${video.title} ifsa ve sex videolari full HD kalitede.`}
+        keywords={`${video.model_name || ''}, ${video.category_name || ''}, turk ifsa, porno izle, hd sex, leak`}
         noindex={video.is_vip}
       />
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Back */}
         <button onClick={() => navigate(-1)} className="btn-ghost text-sm">
           <ArrowLeft size={15} />
           Geri
         </button>
 
-        {/* Player / Gate */}
         {canWatch ? (
           <div className="rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video">
-            <video
-              src={getSecureVideoUrl(video.url)}
-              poster={getMediaUrl(video.thumbnail_url)}
-              controls
-              autoPlay
-              playsInline
-              preload="metadata"
-              className="w-full h-full"
-              controlsList="nodownload noplaybackrate"
-              disablePictureInPicture
-              onContextMenu={(e) => e.preventDefault()}
-              onPlay={() => incrementViewCount?.(video.id)}
-            />
+            {playbackLoading ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                Video hazirlaniyor...
+              </div>
+            ) : playbackError ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
+                {playbackError}
+              </div>
+            ) : (
+              <video
+                src={playbackUrl}
+                poster={getMediaUrl(video.thumbnail_url)}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                className="w-full h-full"
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
+                onContextMenu={(e) => e.preventDefault()}
+                onPlay={onVideoPlay}
+              />
+            )}
           </div>
         ) : (
           <div className="rounded-2xl bg-dark-700 border border-dark-500 aspect-video flex flex-col items-center justify-center gap-6 p-8 text-center">
@@ -75,9 +120,9 @@ const VideoPage = () => {
               <Lock size={32} className="text-vip-gold" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white mb-2">VIP İçerik</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">VIP Icerik</h2>
               <p className="text-gray-400 max-w-md">
-                Bu videoyu izlemek için VIP üyelik gereklidir.
+                Bu videoyu izlemek icin VIP uyelik gereklidir.
               </p>
             </div>
             <a
@@ -87,12 +132,11 @@ const VideoPage = () => {
               className="btn-vip text-base px-8 py-3"
             >
               <Send size={16} />
-              Telegram'dan VIP Üyelik Al
+              Telegram'dan VIP Uyelik Al
             </a>
           </div>
         )}
 
-        {/* Meta info */}
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>

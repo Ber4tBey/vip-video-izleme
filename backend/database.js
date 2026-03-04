@@ -44,6 +44,7 @@ db.exec(`
     title       TEXT    NOT NULL,
     description TEXT,
     url         TEXT    NOT NULL,
+    streamtape_url TEXT,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     model_id    INTEGER REFERENCES models(id) ON DELETE SET NULL,
     is_vip      INTEGER NOT NULL DEFAULT 0,
@@ -70,6 +71,9 @@ db.exec(`
 const videoColumns = db.prepare(`PRAGMA table_info(videos)`).all().map((c) => c.name);
 if (!videoColumns.includes('thumbnail_url')) {
   db.prepare('ALTER TABLE videos ADD COLUMN thumbnail_url TEXT').run();
+}
+if (!videoColumns.includes('streamtape_url')) {
+  db.prepare('ALTER TABLE videos ADD COLUMN streamtape_url TEXT').run();
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────

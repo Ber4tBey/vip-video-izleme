@@ -181,6 +181,9 @@ export const getSecureVideoUrl = (path) => {
   return url;
 };
 
+export const isStreamtapeSource = (value = '') =>
+  typeof value === 'string' && /(streamtape\.com|streamta\.pe)/i.test(value);
+
 export const api = {
   get:    (url)              => request('GET',    url),
   post:   (url, data)        => request('POST',   url, data),
@@ -189,6 +192,19 @@ export const api = {
   delete: (url)              => request('DELETE', url),
   upload: (url, formData)    => request('POST',   url, formData, true),
   uploadPut: (url, formData) => request('PUT',    url, formData, true),
+};
+
+/**
+ * Returns the effective playback URL.
+ * For Streamtape videos, fetches a freshly resolved URL from backend.
+ */
+export const getVideoPlaybackUrl = async (video) => {
+  if (!video) return '';
+  const streamtapeSource = video.streamtape_url || (isStreamtapeSource(video.url) ? video.url : '');
+  if (!streamtapeSource) return getSecureVideoUrl(video.url);
+
+  const payload = await api.get(`/videos/${video.id}/playback`);
+  return payload?.url || '';
 };
 
 /** Upload a File object, returns the server URL */
