@@ -203,56 +203,22 @@ New-NetFirewallRule -DisplayName "Video App 8080" -Direction Inbound -Protocol T
 Get-NetFirewallRule | Where-Object {$_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound'} | Select-Object DisplayName, LocalPort
 ```
 
-### 7.2 Port 80 Yönlendirmesi
+### 7.2 Port 80 Yönlendirmesi (Dahili Nginx Proxy)
 
-Cloudflare yalnızca port 80/443 üzerinden proxy yapar. Docker uygulamanız 8080'de çalışıyor. IIS veya port proxy ile yönlendirin:
+Sistemdeki `nginx` konteyneri, halihazırda port `80` üzerinden çalışmaktadır. Bu konteyner hem HLS videoları için proxy/cache yapar, hem de ana web trafiğini (`/`) otomatik olarak arka planda çalışan `frontend` sistemine yönlendirir.
 
-**Seçenek A — IIS Reverse Proxy (önerilen):**
+Kısacası **Windows Server üzerinde IIS veya netsh ile port yönlendirmeye gerek yoktur**. Sadece şu adıma dikkat etmeniz yeterlidir:
 
-```powershell
-# IIS ve URL Rewrite modülü kur
-Install-WindowsFeature -Name Web-Server -IncludeManagementTools
-Install-WindowsFeature -Name Web-Url-Auth
-
-# Application Request Routing (ARR) indir ve kur:
-# https://www.iis.net/downloads/microsoft/application-request-routing
-
-# IIS Manager'da yeni site oluştur → web.config:
-```
-
-`C:\inetpub\wwwroot\web.config`:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-  <system.webServer>
-    <rewrite>
-      <rules>
-        <rule name="ReverseProxy" stopProcessing="true">
-          <match url="(.*)" />
-          <action type="Rewrite" url="http://localhost:8080/{R:1}" />
-        </rule>
-      </rules>
-    </rewrite>
-    <security>
-      <requestFiltering>
-        <requestLimits maxAllowedContentLength="8589934592" />
-      </requestFiltering>
-    </security>
-  </system.webServer>
-</configuration>
-```
-
-**Seçenek B — Netsh Port Proxy (daha basit):**
+**IIS Çakışmasını Önleme (Önemli):**
+Windows Server'da IIS (`W3SVC`) varsayılan olarak 80 portunu dinler ve Docker'daki nginx'in 80 portunu açmasını engeller. Docker'ın port 80'i alabilmesi için IIS'i durdurmanız gerekir:
 
 ```powershell
-# Port 80'i 8080'e yönlendir
-netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=8080 connectaddress=127.0.0.1
+# IIS servisini durdur ve devre dışı bırak
+Stop-Service -Name W3SVC
+Set-Service -Name W3SVC -StartupType Disabled
+```
 
-# Yönlendirmeleri listele
-netsh interface portproxy show all
-
-# Kaldırmak için
-netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0
+Bu işlemin ardından, Cloudflare veya kullanıcılar sitenize doğrudan Port 80 veya 443 üzerinden gelir, ilk olarak **Nginx** ile karşılaşır ve pürüzsüz bir şekilde Frontend & API katmanına aktarılır. IIS veya ARR kurmanıza tamamen veda ettik!
 ```
 
 ### 7.3 Docker Desktop Autostart
@@ -497,7 +463,7 @@ Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 
 ### `413 Request Entity Too Large`
 
-IIS kullanıyorsanız `web.config`'de `maxAllowedContentLength` değerini artırın (bkz. Bölüm 7.2).
+Dosya yüklemelerinde bu hatayı alırsanız frontend reverse proxy yapılandırmasında (`nginx.conf` içi `client_max_body_size`) kontrol sağlayabilirsiniz. Sistemin kendi ayarında dosya boyutu sınırı kaldırılmıştır.
 
 ### Cloudflare'de video oynatma sorunu
 
