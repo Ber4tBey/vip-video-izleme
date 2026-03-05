@@ -1,43 +1,102 @@
-version: '3.9'
+version: '3.8'
 
 services:
-  # ─── Node.js Express Backend ──────────────────────────────────────────────────
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: vip_backend
-    restart: unless-stopped
-    environment:
-      PORT: 3001
-      JWT_SECRET: ${JWT_SECRET:-supersecret_change_this_12345}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
     volumes:
-      - ./backend/db:/app/db               # SQLite database (persistent)
-      - ./backend/uploads:/app/uploads     # Uploaded files (persistent)
-    networks:
-      - vip_net
+      - redis_data:/data
 
-  # ─── Nginx (React frontend + reverse proxy) ────────────────────────────────
-  nginx:
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  api:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: vip_nginx
-    restart: unless-stopped
+      context: ./new_front/backend
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-admin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-admin123}
+      - JWT_SECRET=super_secret_video_key_123
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=video_user
+      - PG_PASSWORD=video_pass
+      - PG_DB=video_db
+      - PORT=3000
+    depends_on:
+      - redis
+      - minio
+      - postgres
+    volumes:
+      - api_uploads:/app/uploads
+
+  worker:
+    build:
+      context: ./worker
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-admin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-admin123}
+    depends_on:
+      - redis
+      - minio
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  nginx:
+    image: nginx:alpine
     ports:
       - "80:80"
     volumes:
-      - nginx_cache:/var/cache/nginx/media  # Nginx media cache
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - backend
-    networks:
-      - vip_net
+      - minio
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=video_user
+      - POSTGRES_PASSWORD=video_pass
+      - POSTGRES_DB=video_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  frontend:
+    build:
+      context: ./new_front
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
-  nginx_cache:
-
-networks:
-  vip_net:
-    driver: bridge
+  redis_data:
+  minio_data:
+  api_uploads:
+  pg_data:

@@ -1,7 +1,6 @@
 node_modules/
 .env
+dist/
 uploads/
-pg_data/
-docker-data/
+tmp-uploads/
 *.log
-.DS_Store

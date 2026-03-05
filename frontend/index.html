@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Streaming Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 2rem; }
+        .container { max-width: 800px; width: 100%; }
+        video { width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); background: #000; }
+        .upload-card { background: #222; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; }
+        input[type="file"] { margin-bottom: 1rem; }
+        button { background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .status { margin-top: 1rem; color: #aaa; }
+        .progress-container { width: 100%; height: 20px; background: #333; border-radius: 10px; margin-top: 1rem; display: none; overflow: hidden; }
+        .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #4CAF50, #8BC34A); transition: width 0.3s ease; }
+        .progress-text { margin-top: 5px; font-size: 0.9rem; color: #4CAF50; text-align: right; }
+        .video-library { margin-top: 3rem; background: #222; padding: 2rem; border-radius: 8px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .video-card { background: #333; padding: 1rem; border-radius: 8px; text-align: center; cursor: pointer; transition: transform 0.2s; }
+        .video-card:hover { transform: translateY(-5px); background: #444; }
+        .video-card h3 { font-size: 0.9rem; margin: 0; word-break: break-all; color: #007bff; }
+        .delete-btn { margin-top: 10px; background: #dc3545; padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none; color: white; cursor: pointer; }
+        .delete-btn:hover { background: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Streaming Platform</h1>
+        
+        <div class="upload-card">
+            <h2>Upload Video</h2>
+            <form id="uploadForm">
+                <input type="file" id="videoFile" accept="video/*" required>
+                <button type="submit">Upload & Encode</button>
+            </form>
+            <div id="status" class="status"></div>
+            <div id="progress-container" class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="progress-text" class="progress-text" style="display:none;">0%</div>
+            <div id="playback-url" class="status" style="display:none; color: #4CAF50;"></div>
+        </div>
+
+        <div class="player-container">
+            <h2>Player</h2>
+            <video id="video-player" controls preload="auto"></video>
+            <div style="margin-top: 1rem;">
+                <label for="quality-selector">Quality:</label>
+                <select id="quality-selector">
+                    <option value="-1">Auto</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="video-library">
+            <h2>My Videos</h2>
+            <div id="video-grid" class="grid">
+                <!-- Video cards will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const statusDiv = document.getElementById('status');
+        const playbackUrlDiv = document.getElementById('playback-url');
+        const video = document.getElementById('video-player');
+        const qualitySelector = document.getElementById('quality-selector');
+        let hls;
+
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        
+        // ... (existing hls logic) ...
+
+        uploadForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const file = document.getElementById('videoFile').files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('video', file);
+
+            statusDiv.innerHTML = 'Starting upload...';
+            playbackUrlDiv.style.display = 'none';
+            progressContainer.style.display = 'block';
+            progressText.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'http://localhost:3000/upload', true);
+
+            // Listen to the upload progress
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    progressBar.style.width = percentComplete + '%';
+                    progressText.textContent = percentComplete + '%';
+                    
+                    if (percentComplete === 100) {
+                        statusDiv.innerHTML = 'Upload finished! Waiting for server to assign video ID...';
+                    } else {
+                        statusDiv.innerHTML = `Uploading: ${percentComplete}%`;
+                    }
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        statusDiv.innerHTML = `Upload successful! Analyzing video...`;
+                        
+                        const streamUrl = `http://localhost/hls/${data.videoId}/master.m3u8`;
+                        playbackUrlDiv.style.display = 'block';
+                        playbackUrlDiv.innerHTML = `Playback URL: <a href="${streamUrl}" target="_blank">Direct Link</a>`;
+
+                        const loadBtn = document.createElement('button');
+                        loadBtn.textContent = 'Load Player';
+                        loadBtn.style.marginLeft = '10px';
+                        loadBtn.onclick = () => loadVideo(streamUrl);
+                        playbackUrlDiv.appendChild(loadBtn);
+
+                        // Start tracking ffmpeg progress
+                        trackProcessingStatus(data.videoId);
+
+                    } catch(err) {
+                       statusDiv.textContent = `Error parsing response: ${err.message}`;
+                    }
+                } else {
+                    let errMessage = xhr.statusText;
+                    try { errMessage = JSON.parse(xhr.responseText).error; } catch(e){}
+                    statusDiv.textContent = `Upload failed: ${errMessage}`;
+                }
+            };
+
+            xhr.onerror = function() {
+                statusDiv.textContent = 'Upload failed: Network Error.';
+            };
+
+            xhr.send(formData);
+        });
+
+        // Polling function for processing status
+        function trackProcessingStatus(videoId) {
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`http://localhost:3000/status/${videoId}`);
+                    const data = await res.json();
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(interval);
+                        statusDiv.innerHTML = `Processing complete! Video ID: <b>${videoId}</b>`;
+                        // Reload video list
+                        loadVideoList();
+                    } else if (data.status === 'active' || data.status === 'waiting') {
+                        statusDiv.innerHTML = `Encoding in progress: <b>${data.progress}%</b>`;
+                        progressBar.style.width = data.progress + '%';
+                        progressText.textContent = `Encoding: ${data.progress}%`;
+                    } else if (data.status === 'failed') {
+                        clearInterval(interval);
+                        statusDiv.innerHTML = `Processing failed for Video ID: ${videoId}`;
+                    }
+                } catch(e) {
+                    console.error('Status check error', e);
+                }
+            }, 3000); // Check every 3 seconds
+        }
+
+        // Fetch and display all videos
+        async function loadVideoList() {
+            const grid = document.getElementById('video-grid');
+            try {
+                const res = await fetch('http://localhost:3000/videos');
+                const data = await res.json();
+                
+                grid.innerHTML = '';
+                if (!data.videos || data.videos.length === 0) {
+                    grid.innerHTML = '<p style="color:#aaa;">No videos found.</p>';
+                    return;
+                }
+
+                data.videos.forEach(v => {
+                    const card = document.createElement('div');
+                    card.className = 'video-card';
+                    card.style.position = 'relative';
+                    
+                    if (v.status === 'completed') {
+                        card.innerHTML = `
+                            <h3>${v.videoId.substring(0,8)}...</h3>
+                            <button class="delete-btn" onclick="deleteVideo('${v.videoId}', event)">Delete</button>
+                        `;
+                        card.onclick = (e) => {
+                            if (e.target.tagName === 'BUTTON') return;
+                            const streamUrl = `http://localhost/hls/${v.videoId}/master.m3u8`;
+                            playbackUrlDiv.style.display = 'block';
+                            playbackUrlDiv.innerHTML = `Playing: <a href="${streamUrl}" target="_blank">${v.videoId}</a>`;
+                            loadVideo(streamUrl);
+                            window.scrollTo({ top: document.querySelector('.player-container').offsetTop, behavior: 'smooth' });
+                        };
+                    } else {
+                        // Active or Waiting Video
+                        card.style.background = '#2a2a2a';
+                        card.style.border = '1px solid #4CAF50';
+                        card.style.cursor = 'default';
+                        card.innerHTML = `
+                            <h3 style="color:#aaa;">${v.videoId.substring(0,8)}...</h3>
+                            <div style="margin-top: 10px; font-size: 0.8rem; color: #4CAF50;">
+                                ${v.status === 'waiting' ? 'Waiting in Queue...' : 'Encoding: ' + v.progress + '%'}
+                            </div>
+                        `;
+                    }
+                    
+                    grid.appendChild(card);
+                });
+            } catch(e) {
+                grid.innerHTML = '<p style="color:red;">Failed to load videos.</p>';
+            }
+        }
+
+        async function deleteVideo(videoId, event) {
+            event.stopPropagation();
+            if (!confirm(`Are you sure you want to delete video ${videoId}?`)) return;
+            
+            try {
+                // Delete from API
+                const res = await fetch(`http://localhost:3000/videos/${videoId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    // Remove from view immediately, then reload
+                    event.target.closest('.video-card').remove();
+                } else {
+                    const data = await res.json();
+                    alert(`Failed to delete: ${data.error}`);
+                }
+            } catch(e) {
+                alert(`Error deleting video: ${e.message}`);
+            }
+        }
+
+        // Load list on startup
+        loadVideoList();
+
+        function loadVideo(url) {
+            if (Hls.isSupported()) {
+                if (hls) {
+                    hls.destroy();
+                }
+                hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    // Populate quality levels
+                    qualitySelector.innerHTML = '<option value="-1">Auto</option>';
+                    hls.levels.forEach((level, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = `${level.height}p`;
+                        qualitySelector.appendChild(option);
+                    });
+                    video.play();
+                });
+
+                qualitySelector.addEventListener('change', (e) => {
+                    hls.currentLevel = parseInt(e.target.value);
+                });
+
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.error("Fatal network error encountered, try to recover");
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.error("Fatal media error encountered, try to recover");
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // For Safari
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play();
+                });
+            }
+        }
+    </script>
+</body>
+</html>

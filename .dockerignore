@@ -1,7 +1,0 @@
-node_modules
-dist
-.env.local
-backend/node_modules
-backend/db
-backend/uploads
-*.log
