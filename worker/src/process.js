@@ -74,7 +74,7 @@ function extractFrame(inputPath, timePos, outputPath) {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .seekInput(Math.max(0, timePos))
-      .outputOptions(['-vframes 1', '-q:v 3', '-vf scale=640:-1'])
+      .outputOptions(['-vframes 1', '-q:v 3', '-vf scale=640:-2'])
       .output(outputPath)
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
@@ -122,7 +122,7 @@ function convertToHLS(job, inputPath, outputDir) {
         '-threads 0',
         '-g 48',
         '-sc_threshold 0',
-        '-vf scale=w=1280:h=720:force_original_aspect_ratio=decrease',
+        '-vf', 'scale=w=1280:h=720:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2',
         '-c:v libx264',
         '-b:v 2800k',
         '-c:a aac',
