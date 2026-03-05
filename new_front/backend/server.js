@@ -170,18 +170,7 @@ app.get('/uploads/videos/*', async (req, res) => {
   const isJpg  = objectName.endsWith('.jpg');
   const isMp4  = objectName.endsWith('.mp4');
 
-  // Only .m3u8 playlist files require JWT — .ts segments are public (no value without playlist)
-  if (isM3u8) {
-    const token = req.query.token;
-    if (!token) {
-      return res.status(401).json({ error: 'Erisim reddedildi. Token eksik.' });
-    }
-    try {
-      jwt.verify(token, process.env.JWT_SECRET || 'gizli-anahtar-degistirilecek');
-    } catch (err) {
-      return res.status(403).json({ error: 'Gecersiz veya suresi dolmus token.' });
-    }
-  }
+  // Removed JWT verification: All .m3u8 playlists and .ts segments are now Public
 
   try {
     const dataStream = await storage.minioClient.getObject('hls-videos', objectName);

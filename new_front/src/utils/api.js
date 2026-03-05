@@ -168,19 +168,8 @@ export const getMediaUrl = (path) => {
   return `${mediaBase}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
-/**
- * Returns the secure absolute URL for video playing.
- * Appends the JWT token as a query parameter so the backend can authorize the stream request.
- */
 export const getSecureVideoUrl = (path) => {
-  const url = getMediaUrl(path);
-  if (!url) return '';
-  const token = getToken();
-  if (token) {
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}token=${token}`;
-  }
-  return url;
+  return getMediaUrl(path);
 };
 
 export const getVideoPlaybackUrl = async (video) => {

@@ -20,12 +20,15 @@ const CACHE_TTL = {
   mp4: 60 * 60 * 24 * 7,  // 7 days for preview clips
 };
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request, event));
+});
 
-    // ── API routes — always bypass CDN cache ──────────────────────────────
+async function handleRequest(request, event) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // ── API routes — always bypass CDN cache ──────────────────────────────
     if (path.startsWith('/api/')) {
       return fetch(request);
     }
@@ -40,7 +43,7 @@ export default {
         });
       }
 
-      const valid = await verifyJwt(token, env.JWT_SECRET);
+      const valid = await verifyJwt(token, JWT_SECRET); // JWT_SECRET from environment variables
       if (!valid) {
         return new Response(JSON.stringify({ error: 'Geçersiz token' }), {
           status: 403,
@@ -57,24 +60,23 @@ export default {
 
     // ── .ts segments — public, serve from Cloudflare edge cache ──────────
     if (path.endsWith('.ts')) {
-      return serveFromCache(request, ctx, CACHE_TTL.ts, 'video/MP2T');
+      return serveFromCache(request, event, CACHE_TTL.ts, 'video/MP2T');
     }
 
     // ── thumbnails and preview clips — public, cached ─────────────────────
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
-      return serveFromCache(request, ctx, CACHE_TTL.jpg, 'image/jpeg');
+      return serveFromCache(request, event, CACHE_TTL.jpg, 'image/jpeg');
     }
     if (path.endsWith('.mp4')) {
-      return serveFromCache(request, ctx, CACHE_TTL.mp4, 'video/mp4');
+      return serveFromCache(request, event, CACHE_TTL.mp4, 'video/mp4');
     }
 
     // ── everything else — pass through ────────────────────────────────────
     return fetch(request);
-  },
-};
+}
 
 // ── Serve from Cloudflare edge cache ────────────────────────────────────────
-async function serveFromCache(request, ctx, ttl, contentType) {
+async function serveFromCache(request, event, ttl, contentType) {
   const cacheKey = new Request(new URL(request.url).pathname, { method: 'GET' });
   const cache = caches.default;
 
@@ -98,7 +100,7 @@ async function serveFromCache(request, ctx, ttl, contentType) {
     },
   });
 
-  ctx.waitUntil(cache.put(cacheKey, cachedResponse.clone()));
+  event.waitUntil(cache.put(cacheKey, cachedResponse.clone()));
   return cachedResponse;
 }
 
