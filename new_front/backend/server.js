@@ -35,7 +35,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const staticCacheHeaders = (res) => {
-  res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+  res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
 };
 
 app.use('/uploads/images', express.static(imagesDir, {
@@ -177,12 +177,11 @@ app.get('/uploads/videos/*', async (req, res) => {
 
     if (isM3u8) {
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-      // No-cache for playlists (they are per-user access gate)
-      res.setHeader('Cache-Control', 'no-store, no-cache');
+      // Now allowing playlists to be cached since token verification is removed
+      res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
       let playlist = '';
       dataStream.on('data', chunk => playlist += chunk.toString('utf8'));
       dataStream.on('end', () => {
-        // .ts segments are now public — do NOT append token to their URLs
         res.send(playlist);
       });
       dataStream.on('error', (err) => {
@@ -192,14 +191,13 @@ app.get('/uploads/videos/*', async (req, res) => {
       return;
     } else if (isTs) {
       res.setHeader('Content-Type', 'video/MP2T');
-      // Long cache: .ts segment content never changes
-      res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
+      res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
     } else if (isJpg) {
       res.setHeader('Content-Type', 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
     } else if (isMp4) {
       res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, immutable');
     }
 
     dataStream.pipe(res);
