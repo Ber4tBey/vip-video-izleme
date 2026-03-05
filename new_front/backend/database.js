@@ -60,4 +60,5 @@ seedDatabase();
 module.exports = {
   pool,
   query,
+  seedDatabase,
 };
