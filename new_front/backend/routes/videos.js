@@ -125,19 +125,30 @@ router.post('/upload/complete', adminOnly, async (req, res) => {
     const chunkDir = path.join(uploadDir, uploadId);
     const finalFilePath = path.join(uploadDir, `${uploadId}_final.mp4`);
     
+    // Asynchronous non-blocking chunk merging
     const writeStream = fs.createWriteStream(finalFilePath);
     
-    for (let i = 0; i < totalChunks; i++) {
+    const mergeChunks = async () => {
+      for (let i = 0; i < totalChunks; i++) {
         const chunkPath = path.join(chunkDir, `chunk_${i}`);
         if (!fs.existsSync(chunkPath)) {
-            return res.status(400).json({ error: `Missing chunk ${i}` });
+          throw new Error(`Missing chunk ${i}`);
         }
-        const data = fs.readFileSync(chunkPath);
-        writeStream.write(data);
-        fs.unlinkSync(chunkPath);
-    }
-    
-    writeStream.end();
+        await new Promise((resolve, reject) => {
+          const readStream = fs.createReadStream(chunkPath);
+          readStream.on('end', () => {
+            fs.unlinkSync(chunkPath); // clean up immediately
+            resolve();
+          });
+          readStream.on('error', reject);
+          readStream.pipe(writeStream, { end: false }); // keep writeStream open
+        });
+      }
+      writeStream.end();
+    };
+
+    await mergeChunks();
+    // After asynchronous write completion
     fs.rmdirSync(chunkDir);
 
     // After writing the file, create DB record

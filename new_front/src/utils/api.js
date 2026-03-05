@@ -109,7 +109,12 @@ export const uploadVideoInChunks = async ({ file, metadata, onProgress }) => {
   const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   const totalChunks = Math.max(1, Math.ceil(file.size / VIDEO_CHUNK_SIZE));
 
-  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+  let uploadedChunks = 0;
+  const maxConcurrent = 4; // Upload 4 chunks simultaneously
+
+  const queue = Array.from({ length: totalChunks }, (_, i) => i);
+
+  const uploadChunk = async (chunkIndex) => {
     const start = chunkIndex * VIDEO_CHUNK_SIZE;
     const end = Math.min(file.size, start + VIDEO_CHUNK_SIZE);
     const chunkBlob = file.slice(start, end);
@@ -123,13 +128,26 @@ export const uploadVideoInChunks = async ({ file, metadata, onProgress }) => {
     await xhrFormRequest({
       endpoint: '/videos/upload/chunk',
       formData: fd,
-      onProgress: (chunkRatio) => {
-        if (!onProgress) return;
-        const overall = ((chunkIndex + chunkRatio) / totalChunks) * 100;
-        onProgress(Math.min(99, Math.max(0, Math.round(overall))));
-      },
     });
-  }
+
+    uploadedChunks++;
+    if (onProgress) {
+      onProgress(Math.min(99, Math.round((uploadedChunks / totalChunks) * 100)));
+    }
+  };
+
+  const uploadWorker = async () => {
+    while (queue.length > 0) {
+      const chunkIndex = queue.shift();
+      if (chunkIndex !== undefined) {
+        await uploadChunk(chunkIndex);
+      }
+    }
+  };
+
+  // Launch parallel workers
+  const workers = Array.from({ length: Math.min(maxConcurrent, totalChunks) }).map(uploadWorker);
+  await Promise.all(workers);
 
   const createdVideo = await api.post('/videos/upload/complete', {
     uploadId,
