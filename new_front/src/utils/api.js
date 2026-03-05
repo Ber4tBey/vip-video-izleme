@@ -109,10 +109,19 @@ export const uploadVideoInChunks = async ({ file, metadata, onProgress }) => {
   const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   const totalChunks = Math.max(1, Math.ceil(file.size / VIDEO_CHUNK_SIZE));
 
-  let uploadedChunks = 0;
-  const maxConcurrent = 4; // Upload 4 chunks simultaneously
-
+  const maxConcurrent = 3; // Best balance for HTTP connections + upload bandwidth
   const queue = Array.from({ length: totalChunks }, (_, i) => i);
+  
+  // Track continuous progress (0.0 to 1.0) of each chunk
+  const chunkProgresses = new Array(totalChunks).fill(0);
+
+  const reportProgress = () => {
+    if (!onProgress) return;
+    const totalProgress = chunkProgresses.reduce((sum, current) => sum + current, 0);
+    const overallPercentage = (totalProgress / totalChunks) * 100;
+    // Cap at 99% until backend completes the merge
+    onProgress(Math.min(99, Math.max(0, Math.round(overallPercentage))));
+  };
 
   const uploadChunk = async (chunkIndex) => {
     const start = chunkIndex * VIDEO_CHUNK_SIZE;
@@ -128,12 +137,15 @@ export const uploadVideoInChunks = async ({ file, metadata, onProgress }) => {
     await xhrFormRequest({
       endpoint: '/videos/upload/chunk',
       formData: fd,
+      onProgress: (chunkRatio) => {
+        chunkProgresses[chunkIndex] = chunkRatio; // live ratio (0...1)
+        reportProgress();
+      }
     });
 
-    uploadedChunks++;
-    if (onProgress) {
-      onProgress(Math.min(99, Math.round((uploadedChunks / totalChunks) * 100)));
-    }
+    // Ensure it perfectly records 1.0 (100%) when finished
+    chunkProgresses[chunkIndex] = 1;
+    reportProgress();
   };
 
   const uploadWorker = async () => {
