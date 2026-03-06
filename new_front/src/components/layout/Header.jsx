@@ -54,6 +54,7 @@ const Header = ({ onMenuToggle }) => {
           <button
             onClick={() => navigate('/vip')}
             className="btn-vip text-sm py-1.5 animate-pulse-gold"
+            aria-label="VIP üyelik sayfasına git"
           >
             <Crown size={14} />
             <span className="hidden sm:inline">VIP Ol</span>

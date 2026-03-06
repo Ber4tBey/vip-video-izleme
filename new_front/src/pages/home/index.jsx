@@ -76,7 +76,7 @@ const HomePage = () => {
           ].map((s) => (
             <div key={s.label} className="text-right">
               <p className="text-2xl font-black text-white">{s.value}</p>
-              <p className="text-xs text-gray-500">{s.label}</p>
+              <p className="text-xs text-gray-400">{s.label}</p>
             </div>
           ))}
         </div>
@@ -93,7 +93,7 @@ const HomePage = () => {
             Trend Videolar
           </h2>
           <Link to="/trends" className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors">
-            Tümünü Gör <ChevronRight size={14} />
+            Tüm Trendler <ChevronRight size={14} />
           </Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
@@ -116,7 +116,7 @@ const HomePage = () => {
             Ücretsiz Videolar
           </h2>
           <Link to="/videos" className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors">
-            Tümünü Gör <ChevronRight size={14} />
+            Tüm Videolar <ChevronRight size={14} />
           </Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

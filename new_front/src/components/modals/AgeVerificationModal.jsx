@@ -41,7 +41,7 @@ const AgeVerificationModal = ({ onVerify }) => {
             </button>
           </div>
 
-          <p className="text-xs text-gray-600 mt-6">
+          <p className="text-xs text-gray-400 mt-6">
             Devam ederek Hizmet Şartlarımızı ve Gizlilik Politikamızı kabul etmiş olursunuz.
           </p>
         </div>
