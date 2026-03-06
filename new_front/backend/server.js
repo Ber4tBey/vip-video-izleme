@@ -210,6 +210,119 @@ app.get('/uploads/videos/*', async (req, res) => {
     res.status(500).json({ error: 'Sunucu hatasi' });
   }
 });
+// ─── Bot Prerender: serves HTML with correct meta tags for crawlers ───
+const trMapSrv = { ç:'c',Ç:'C',ğ:'g',Ğ:'G',ı:'i',İ:'I',ö:'o',Ö:'O',ş:'s',Ş:'S',ü:'u',Ü:'U' };
+const slugifySrv = (t='') => t.split('').map(c=>trMapSrv[c]||c).join('').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+
+const prerenderHtml = (meta) => {
+  const siteUrl = 'https://onlymix.tube';
+  const title = meta.title || 'OnlyMix — Türk İfşa, Porno ve Sex Videoları İzle';
+  const desc = meta.description || 'En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle.';
+  const image = meta.image || `${siteUrl}/android-chrome-192x192.png`;
+  const url = meta.url || siteUrl;
+  const type = meta.type || 'website';
+  const jsonLd = meta.jsonLd ? `<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>` : '';
+
+  return `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>${title}</title>
+<meta name="description" content="${desc}"/>
+<meta name="keywords" content="türk ifşa, porno, sex, sikiş, türkçe porno, yerli porno, ifşa videoları, türk modeller, hd porno izle"/>
+<meta name="robots" content="index, follow, max-image-preview:large"/>
+<meta property="og:type" content="${type}"/>
+<meta property="og:title" content="${title}"/>
+<meta property="og:description" content="${desc}"/>
+<meta property="og:image" content="${image}"/>
+<meta property="og:url" content="${url}"/>
+<meta property="og:site_name" content="OnlyMix"/>
+<meta property="og:locale" content="tr_TR"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="${title}"/>
+<meta name="twitter:description" content="${desc}"/>
+<meta name="twitter:image" content="${image}"/>
+<link rel="canonical" href="${url}"/>
+${jsonLd}
+</head>
+<body><div id="root"></div></body>
+</html>`;
+};
+
+app.get('/api/prerender/*', async (req, res) => {
+  const siteUrl = 'https://onlymix.tube';
+  const route = req.params[0] || '';
+
+  try {
+    // /video/:slug
+    const videoMatch = route.match(/^video\/(.+)$/);
+    if (videoMatch) {
+      const slug = videoMatch[1];
+      const { rows } = await db.query(
+        "SELECT v.*, c.name as category_name, m.name as model_name FROM videos v LEFT JOIN categories c ON v.category_id=c.id LEFT JOIN models m ON v.model_id=m.id WHERE v.is_active=1 AND v.job_status='completed'"
+      );
+      const video = rows.find(v => slugifySrv(v.title) === slug);
+      if (video && !video.is_vip) {
+        const thumbUrl = video.thumbnail_url ? `${siteUrl}${video.thumbnail_url}` : undefined;
+        return res.send(prerenderHtml({
+          title: `${video.title} — Türk İfşa Porno İzle`,
+          description: video.description || `${video.title} ifşa ve sex videosu full HD izle. ${video.model_name||'Türk porno'}, ${video.category_name||'sikiş videoları'}.`,
+          image: thumbUrl,
+          url: `${siteUrl}/video/${slug}`,
+          type: 'video.other',
+          jsonLd: { "@context":"https://schema.org","@type":"VideoObject","name":video.title,"description":video.description||`${video.title} porno videosu`,"thumbnailUrl":thumbUrl,"uploadDate":video.created_at,"interactionStatistic":{"@type":"InteractionCounter","interactionType":"https://schema.org/WatchAction","userInteractionCount":video.view_count||0} }
+        }));
+      }
+    }
+
+    // /models/:slug
+    const modelMatch = route.match(/^models\/(.+)$/);
+    if (modelMatch) {
+      const { rows } = await db.query('SELECT * FROM models WHERE slug=$1 AND is_active=1', [modelMatch[1]]);
+      if (rows[0]) {
+        const m = rows[0];
+        const img = m.image_url ? `${siteUrl}${m.image_url}` : undefined;
+        return res.send(prerenderHtml({
+          title: `${m.name} İfşa ve Porno Videoları İzle`,
+          description: `${m.name} ifşa videoları, en sıcak paylaşımlar ve vip sızıntılar. ${m.name} porno izle.`,
+          image: img, url: `${siteUrl}/models/${m.slug}`,
+        }));
+      }
+    }
+
+    // /categories/:slug
+    const catMatch = route.match(/^categories\/(.+)$/);
+    if (catMatch) {
+      const { rows } = await db.query('SELECT * FROM categories WHERE slug=$1 AND is_active=1', [catMatch[1]]);
+      if (rows[0]) {
+        const c = rows[0];
+        const img = c.image_url ? `${siteUrl}${c.image_url}` : undefined;
+        return res.send(prerenderHtml({
+          title: `${c.name} Videoları — Porno İzle`,
+          description: `${c.name} kategorisindeki en iyi pornolar, ifşa ve sex videoları.`,
+          image: img, url: `${siteUrl}/categories/${c.slug}`,
+        }));
+      }
+    }
+
+    // Static pages meta
+    const staticMeta = {
+      '': { title: 'OnlyMix — Türk İfşa, Porno ve Sex Videoları HD İzle', description: 'En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle.' },
+      'videos': { title: 'Tüm Videolar — Türk İfşa ve VIP Porno İzle', description: 'En yeni türk ifşa, porno ve sikiş videolarını full HD izle.' },
+      'models': { title: 'Türk Modeller, İfşa ve Sex Videoları', description: 'Yerli modellerin en iyi ifşa, porno ve sex videoları.' },
+      'categories': { title: 'Porno Kategorileri — VIP Sex ve İfşa', description: 'Tüm kategoriler, türk ifşa, hd porno ve sex arşivleri.' },
+      'trends': { title: 'Trend Videolar — En Çok İzlenen Porno ve İfşalar', description: 'En çok izlenen vip porno, türk ifşa ve sex videoları.' },
+      'buy-vip': { title: 'VIP Üyelik Satın Al — Premium Porno Erişimi', description: 'VIP üyelik ile tüm özel türk ifşa, porno ve sex videolarına sınırsız erişim.' },
+    };
+
+    const sm = staticMeta[route] || staticMeta[''];
+    res.send(prerenderHtml({ ...sm, url: `${siteUrl}/${route}` }));
+  } catch (err) {
+    console.error('Prerender error:', err);
+    res.send(prerenderHtml({ url: `${siteUrl}/${route}` }));
+  }
+});
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
