@@ -2,6 +2,7 @@ import { Crown } from 'lucide-react';
 import { useVideo } from '../../context/VideoContext';
 import { VIPRoute } from '../../components/auth/ProtectedRoute';
 import VideoCard from '../../components/ui/VideoCard';
+import SEO from '../../components/SEO';
 
 const VIPPage = () => {
   const { activeVideos } = useVideo();
@@ -9,6 +10,7 @@ const VIPPage = () => {
 
   return (
     <VIPRoute>
+      <SEO title="VIP İçerikler — Özel Porno ve İfşa Videoları" noindex={true} />
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-vip-gold/10 border border-vip-gold/30 flex items-center justify-center">

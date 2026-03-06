@@ -84,10 +84,25 @@ const VideoPage = () => {
   return (
     <>
       <SEO
-        title={`${video.title} - VIP Ifsa ve Porno`}
-        description={video.description || `${video.title} ifsa ve sex videolari full HD kalitede.`}
-        keywords={`${video.model_name || ''}, ${video.category_name || ''}, turk ifsa, porno izle, hd sex, leak`}
+        title={`${video.title} — Türk İfşa Porno İzle`}
+        description={video.description || `${video.title} ifşa ve sex videosu full HD kalitede izle. ${video.model_name ? video.model_name + ' ifşa' : 'Türk porno'}, ${video.category_name || 'sikiş videoları'}.`}
+        keywords={`${video.title}, ${video.model_name || ''}, ${video.category_name || ''}, türk ifşa, porno izle, hd sex, sikiş, yerli porno`}
+        image={video.thumbnail_url ? getMediaUrl(video.thumbnail_url) : undefined}
+        type="video.other"
         noindex={video.is_vip}
+        jsonLd={!video.is_vip ? {
+          "@context": "https://schema.org",
+          "@type": "VideoObject",
+          "name": video.title,
+          "description": video.description || `${video.title} ifşa ve porno videosu`,
+          "thumbnailUrl": video.thumbnail_url ? getMediaUrl(video.thumbnail_url) : undefined,
+          "uploadDate": video.created_at,
+          "interactionStatistic": {
+            "@type": "InteractionCounter",
+            "interactionType": "https://schema.org/WatchAction",
+            "userInteractionCount": video.view_count || 0
+          }
+        } : undefined}
       />
 
       <div className="max-w-5xl mx-auto space-y-6">

@@ -1,5 +1,6 @@
 import { Crown, Check, Zap, Star, Shield, Send } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
+import SEO from '../../components/SEO';
 
 const PLANS = [
   {
@@ -57,6 +58,12 @@ const BuyVIPPage = () => {
   const { settings } = useSettings();
   const tgLink = settings.telegramLink || 'https://t.me/yourusername';
   return (
+    <>
+    <SEO 
+      title="VIP Üyelik Satın Al — Premium Porno ve İfşa Erişimi"
+      description="VIP üyelik ile tüm özel türk ifşa, porno ve sex videolarına sınırsız erişim. Aylık, yıllık veya ömür boyu üyelik planları."
+      keywords="vip üyelik, premium porno, vip ifşa, özel içerik, türk porno üyelik"
+    />
     <div className="max-w-5xl mx-auto space-y-10">
       {/* Header */}
       <div className="text-center">
@@ -132,6 +139,7 @@ const BuyVIPPage = () => {
         Satın almak için Telegram üzerinden iletişime geçin. Tüm fiyatlar KDV dahildir.
       </p>
     </div>
+    </>
   );
 };
 

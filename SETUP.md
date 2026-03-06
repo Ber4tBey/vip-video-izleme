@@ -4,7 +4,7 @@
 > **Hedef Ortam: Windows Server 2019/2022 VPS**
 
 ---
-Şimdi bu projede şunu yapacağız seo yapacağız senle beraber seo yaparken sex , porno , sikiş , porn , türkçe porno , türk ifşa , ifşa , yerli porno , gibi kelimeleri kullanarak seo yapmanı istiyorum ayrıca bazı dinamik sayfalar var 
+
 ## İçindekiler
 
 1. [Sistem Gereksinimleri](#1-sistem-gereksinimleri)

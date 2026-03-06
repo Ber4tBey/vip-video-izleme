@@ -1,17 +1,30 @@
 import { Helmet } from 'react-helmet-async';
 import { useSettings } from '../context/SettingsContext';
 
-const SEO = ({ title, description, keywords, image, url, type = 'website', noindex = false }) => {
+const SITE_URL = 'https://onlymix.tube';
+
+const SEO = ({ 
+  title, 
+  description, 
+  keywords, 
+  image, 
+  url, 
+  type = 'website', 
+  noindex = false,
+  jsonLd = null,
+}) => {
   const { settings } = useSettings();
   
-  const siteName = settings?.siteName || 'ONLYMIXMEDIA';
-  const defaultDescription = 'En kaliteli VIP izleme platformu. Sınırsız VIP içerik deneyimi.';
-  const defaultKeywords = 'türk ifşa, türk modeller, türk sikiş, porno, sex, ifşa, leak, full hd, sansürsüz, özel video';
+  const siteName = settings?.siteName || 'OnlyMix';
+  const defaultDescription = 'En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle. VIP içerikler, yerli modeller ve ifşa arşivleri.';
+  const defaultKeywords = 'türk ifşa, porno, sex, sikiş, türkçe porno, yerli porno, ifşa videoları, türk modeller, onlyfans türk, vip porno, hd porno izle, porn, türk porno, ifşa izle';
+  const defaultImage = `${SITE_URL}/android-chrome-192x192.png`;
 
-  const finalTitle = title ? `${title} — ${siteName}` : siteName;
-  const finalDescription = description ? `${description} ${defaultDescription}` : defaultDescription;
+  const finalTitle = title ? `${title}` : `${siteName} — Türk İfşa, Porno ve Sex Videoları İzle`;
+  const finalDescription = description || defaultDescription;
   const finalKeywords = keywords ? `${keywords}, ${defaultKeywords}` : defaultKeywords;
-  const finalUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
+  const finalImage = image || defaultImage;
+  const finalUrl = url || (typeof window !== 'undefined' ? window.location.href : SITE_URL);
 
   return (
     <Helmet>
@@ -25,13 +38,14 @@ const SEO = ({ title, description, keywords, image, url, type = 'website', noind
       <meta property="og:description" content={finalDescription} />
       <meta property="og:url" content={finalUrl} />
       <meta property="og:site_name" content={siteName} />
-      {image && <meta property="og:image" content={image} />}
+      <meta property="og:image" content={finalImage} />
+      <meta property="og:locale" content="tr_TR" />
 
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={finalTitle} />
       <meta name="twitter:description" content={finalDescription} />
-      {image && <meta name="twitter:image" content={image} />}
+      <meta name="twitter:image" content={finalImage} />
 
       {/* Canonical */}
       {finalUrl && <link rel="canonical" href={finalUrl} />}
@@ -40,7 +54,14 @@ const SEO = ({ title, description, keywords, image, url, type = 'website', noind
       {noindex ? (
         <meta name="robots" content="noindex, nofollow" />
       ) : (
-        <meta name="robots" content="index, follow" />
+        <meta name="robots" content="index, follow, max-image-preview:large" />
+      )}
+
+      {/* JSON-LD Structured Data */}
+      {jsonLd && (
+        <script type="application/ld+json">
+          {JSON.stringify(jsonLd)}
+        </script>
       )}
     </Helmet>
   );

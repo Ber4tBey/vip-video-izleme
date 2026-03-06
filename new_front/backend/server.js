@@ -213,6 +213,76 @@ app.get('/uploads/videos/*', async (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
+// Dynamic sitemap.xml
+app.get('/api/sitemap.xml', async (req, res) => {
+  try {
+    const siteUrl = 'https://onlymix.tube';
+
+    // Static pages
+    const staticPages = [
+      { loc: '/', priority: '1.0', changefreq: 'daily' },
+      { loc: '/videos', priority: '0.9', changefreq: 'daily' },
+      { loc: '/models', priority: '0.8', changefreq: 'weekly' },
+      { loc: '/categories', priority: '0.8', changefreq: 'weekly' },
+      { loc: '/trends', priority: '0.8', changefreq: 'daily' },
+      { loc: '/buy-vip', priority: '0.5', changefreq: 'monthly' },
+    ];
+
+    // Dynamic: videos (title → slug)
+    const videosRes = await db.query(`
+      SELECT title, created_at FROM videos 
+      WHERE is_active = 1 AND job_status = 'completed' AND is_vip = 0
+      ORDER BY created_at DESC
+    `);
+    const videos = videosRes.rows;
+
+    // Dynamic: models
+    const modelsRes = await db.query('SELECT slug, created_at FROM models WHERE is_active = 1');
+    const models = modelsRes.rows;
+    
+    // Dynamic: categories
+    const catsRes = await db.query('SELECT slug, created_at FROM categories WHERE is_active = 1');
+    const categories = catsRes.rows;
+
+    // Slugify helper (same as frontend)
+    const trMap = { ç: 'c', Ç: 'C', ğ: 'g', Ğ: 'G', ı: 'i', İ: 'I', ö: 'o', Ö: 'O', ş: 's', Ş: 'S', ü: 'u', Ü: 'U' };
+    const slugify = (text = '') => text.split('').map(c => trMap[c] || c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+    // Static
+    for (const page of staticPages) {
+      xml += `  <url><loc>${siteUrl}${page.loc}</loc><changefreq>${page.changefreq}</changefreq><priority>${page.priority}</priority></url>\n`;
+    }
+
+    // Videos
+    for (const v of videos) {
+      const slug = slugify(v.title);
+      const lastmod = v.created_at ? new Date(v.created_at).toISOString().split('T')[0] : '';
+      xml += `  <url><loc>${siteUrl}/video/${slug}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>monthly</changefreq><priority>0.7</priority></url>\n`;
+    }
+
+    // Models
+    for (const m of models) {
+      xml += `  <url><loc>${siteUrl}/models/${m.slug}</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>\n`;
+    }
+
+    // Categories
+    for (const c of categories) {
+      xml += `  <url><loc>${siteUrl}/categories/${c.slug}</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>\n`;
+    }
+
+    xml += '</urlset>';
+
+    res.set('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (err) {
+    console.error('Sitemap error:', err);
+    res.status(500).send('Sitemap error');
+  }
+});
+
 // GET /api/system/disk — admin only disk space info
 const { adminOnly: adminOnlyMw } = require('./middleware/auth');
 app.get('/api/system/disk', adminOnlyMw, (req, res) => {

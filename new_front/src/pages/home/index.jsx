@@ -19,8 +19,21 @@ const HomePage = () => {
   return (
     <>
       <SEO 
-        title="Ana Sayfa" 
-        description="En kaliteli VIP porno, türk ifşa ve sex videoları platformu."
+        title="OnlyMix — Türk İfşa, Porno ve Sex Videoları HD İzle"
+        description="En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle. VIP ve ücretsiz türk porno, yerli ifşa, sıcak model videoları."
+        keywords="türk ifşa, porno izle, sex videoları, sikiş, türkçe porno, yerli porno, ifşa izle, hd porno"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "OnlyMix",
+          "url": "https://onlymix.tube",
+          "description": "Türk ifşa, porno ve sex videoları izleme platformu",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://onlymix.tube/videos?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }}
       />
       <div className="space-y-10 animate-fade-in">
         {/* Hero */}

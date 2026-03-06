@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LogIn, Crown, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, Navigate } from 'react-router-dom';
+import SEO from '../../components/SEO';
 
 const LoginPage = () => {
   const { login, isLoggedIn, isAdmin } = useAuth();
@@ -19,7 +20,7 @@ const LoginPage = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400)); // fake loading
+    await new Promise((r) => setTimeout(r, 400));
     const result = await login(form.username.trim(), form.password);
     setLoading(false);
     if (result.success) {
@@ -30,6 +31,8 @@ const LoginPage = () => {
   };
 
   return (
+    <>
+    <SEO title="Giriş Yap" noindex={true} />
     <div className="min-h-[80vh] flex items-center justify-center">
       <div className="w-full max-w-sm">
         {/* Logo */}
@@ -108,6 +111,7 @@ const LoginPage = () => {
         </p>
       </div>
     </div>
+    </>
   );
 };
 
