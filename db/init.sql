@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255) NOT NULL,
     is_admin INT DEFAULT 0,
     is_vip INT DEFAULT 0,
+    vip_expires_at TIMESTAMP DEFAULT NULL,
     is_active INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

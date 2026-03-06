@@ -14,14 +14,14 @@ export const VideoProvider = ({ children }) => {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [vids, mods, cats] = await Promise.all([
-        api.get('/videos'),
-        api.get('/models'),
-        api.get('/categories'),
+      const [vidsRes, modsRes, catsRes] = await Promise.all([
+        api.get('/videos?limit=10000'),
+        api.get('/models?limit=10000'),
+        api.get('/categories?limit=10000'),
       ]);
-      setVideos(vids);
-      setModels(mods);
-      setCategories(cats);
+      setVideos(vidsRes.videos || vidsRes);
+      setModels(modsRes.models || modsRes);
+      setCategories(catsRes.categories || catsRes);
     } catch (e) {
       console.error('fetchAll error', e);
     } finally {

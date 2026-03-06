@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
+const { execSync } = require('child_process');
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
@@ -27,41 +28,63 @@ const toDbBoolean = (value, defaultValue = 0) => {
   return defaultValue;
 };
 
-// GET /api/videos (Public / Authenticated List)
+// GET /api/videos (Public / Authenticated List) — paginated
 router.get('/', async (req, res) => {
   try {
     const { category, model, vip, search } = req.query;
-    let sql = `
-      SELECT v.*, c.name as category_name, m.name as model_name
-      FROM videos v
-      LEFT JOIN categories c ON v.category_id = c.id
-      LEFT JOIN models m ON v.model_id = m.id
-      WHERE v.is_active = 1 AND v.job_status = 'completed'
-    `;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
 
+    let whereClause = ' WHERE v.is_active = 1 AND v.job_status = \'completed\'';
     const params = [];
     let paramCount = 1;
 
     if (category) {
-      sql += ` AND v.category_id = $${paramCount++}`;
+      whereClause += ` AND v.category_id = $${paramCount++}`;
       params.push(category);
     }
     if (model) {
-      sql += ` AND v.model_id = $${paramCount++}`;
+      whereClause += ` AND v.model_id = $${paramCount++}`;
       params.push(model);
     }
     if (vip === '1') {
-      sql += ' AND v.is_vip = 1';
+      whereClause += ' AND v.is_vip = 1';
+    } else if (vip === '0') {
+      whereClause += ' AND v.is_vip = 0';
     }
     if (search) {
-      sql += ` AND v.title ILIKE $${paramCount++}`;
+      whereClause += ` AND v.title ILIKE $${paramCount++}`;
       params.push(`%${search}%`);
     }
 
-    sql += ' ORDER BY v.created_at DESC';
+    const baseSql = `
+      FROM videos v
+      LEFT JOIN categories c ON v.category_id = c.id
+      LEFT JOIN models m ON v.model_id = m.id
+      ${whereClause}
+    `;
 
-    const { rows } = await db.query(sql, params);
-    res.json(rows);
+    // Count
+    const countResult = await db.query(`SELECT COUNT(*) as total ${baseSql}`, params);
+    const total = parseInt(countResult.rows[0].total);
+
+    // Sort
+    const orderBy = req.query.sort === 'views' ? 'v.view_count DESC' : 'v.created_at DESC';
+
+    // Fetch page
+    const { rows } = await db.query(
+      `SELECT v.*, c.name as category_name, m.name as model_name ${baseSql} ORDER BY ${orderBy} LIMIT $${paramCount++} OFFSET $${paramCount++}`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      videos: rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -89,9 +112,32 @@ router.get('/all', adminOnly, async (req, res) => {
   }
 });
 
+const MIN_FREE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
+
+const checkDiskSpace = () => {
+  try {
+    const output = execSync("df -B1 / | tail -1").toString().trim();
+    const parts = output.split(/\s+/);
+    return parseInt(parts[3]) || 0;
+  } catch { return Infinity; } // fail-open if df unavailable
+};
+
+const formatBytes = (bytes) => {
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1024).toFixed(1) + ' KB';
+};
+
 // POST /api/videos/upload/chunk
 router.post('/upload/chunk', adminOnly, upload.single('chunk'), async (req, res) => {
   try {
+    // 10GB guard
+    const freeBytes = checkDiskSpace();
+    if (freeBytes < MIN_FREE_BYTES) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(507).json({ error: `Yetersiz disk alani! Kalan: ${formatBytes(freeBytes)}. En az 10 GB bos alan gereklidir.` });
+    }
+
     const { uploadId, chunkIndex, totalChunks } = req.body;
     
     if (!req.file || !uploadId || chunkIndex === undefined || !totalChunks) {

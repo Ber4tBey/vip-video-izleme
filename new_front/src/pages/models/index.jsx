@@ -1,28 +1,60 @@
-import { useState } from 'react';
-import { Users, Play } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Users, Play, Search } from 'lucide-react';
 import { useVideo } from '../../context/VideoContext';
 import VideoCard from '../../components/ui/VideoCard';
 import VideoPlayer from '../../components/ui/VideoPlayer';
 import Pagination from '../../components/ui/Pagination';
 import SEO from '../../components/SEO';
 import { getMediaUrl } from '../../utils/api';
+import api from '../../utils/api';
 
 const MODELS_PER_PAGE = 20;
 const VIDEOS_PER_PAGE = 20;
 
 const ModelsPage = () => {
-  const { activeModels, activeVideos } = useVideo();
+  const { activeVideos } = useVideo();
+  const [models, setModels] = useState([]);
+  const [modelTotal, setModelTotal] = useState(0);
+  const [modelTotalPages, setModelTotalPages] = useState(0);
+  const [modelPage, setModelPage] = useState(1);
+  const [modelLoading, setModelLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const debounceRef = useRef(null);
+
   const [selectedModel, setSelectedModel] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [modelPage, setModelPage] = useState(1);
   const [videoPage, setVideoPage] = useState(1);
 
-  const modelTotalPages = Math.ceil(activeModels.length / MODELS_PER_PAGE);
-  const paginatedModels = activeModels.slice(
-    (modelPage - 1) * MODELS_PER_PAGE,
-    modelPage * MODELS_PER_PAGE
-  );
+  const fetchModels = useCallback(async (page, search) => {
+    setModelLoading(true);
+    try {
+      const params = new URLSearchParams({ page, limit: MODELS_PER_PAGE });
+      if (search) params.set('search', search);
+      const data = await api.get(`/models?${params.toString()}`);
+      setModels(data.models || []);
+      setModelTotal(data.total || 0);
+      setModelTotalPages(data.totalPages || 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setModelLoading(false);
+    }
+  }, []);
 
+  useEffect(() => {
+    fetchModels(modelPage, searchTerm);
+  }, [modelPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setModelPage(1);
+      fetchModels(1, value);
+    }, 400);
+  };
+
+  // Videos for selected model (client-side from context, since they are per-model subset)
   const modelVideos = selectedModel
     ? activeVideos.filter((v) => v.model_id === selectedModel.id)
     : [];
@@ -100,14 +132,35 @@ const ModelsPage = () => {
         </div>
       ) : (
         <>
-          {activeModels.length === 0 ? (
+          {/* Search bar */}
+          <div className="card p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-48">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Model ara..."
+                  className="input-field pl-9 py-2 text-sm"
+                />
+              </div>
+              <span className="text-xs text-gray-500">
+                {modelTotal} model{searchTerm && ' bulundu'}
+              </span>
+            </div>
+          </div>
+
+          {modelLoading ? (
+            <div className="text-center py-16 text-gray-500">Yükleniyor...</div>
+          ) : models.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <Users size={40} className="mx-auto mb-4 opacity-30" />
-              <p>Henüz model eklenmemiş.</p>
+              <p>{searchTerm ? 'Arama sonucu bulunamadı.' : 'Henüz model eklenmemiş.'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {paginatedModels.map((model) => {
+              {models.map((model) => {
                 const count = activeVideos.filter((v) => v.model_id === model.id).length;
                 return (
                   <button
@@ -115,7 +168,6 @@ const ModelsPage = () => {
                     onClick={() => handleSelectModel(model)}
                     className="card overflow-hidden hover:border-primary-600 hover:-translate-y-1 transition-all duration-300 group text-left"
                   >
-                    {/* Model resmi */}
                     <div className="aspect-square bg-dark-600 overflow-hidden">
                       {model.image_url ? (
                         <img
@@ -137,7 +189,6 @@ const ModelsPage = () => {
                         </div>
                       )}
                     </div>
-                    {/* İsim */}
                     <div className="p-3">
                       <p className="font-semibold text-white text-sm truncate group-hover:text-primary-400 transition-colors">
                         {model.name}

@@ -19,6 +19,7 @@
 10. [Sorun Giderme](#10-sorun-giderme)
 
 ---
+docker-compose exec postgres psql -U video_user -d video_db -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_expires_at TIMESTAMP DEFAULT NULL;"
 
 ## 1. Sistem Gereksinimleri
 

@@ -66,10 +66,15 @@ router.get('/me', async (req, res, next) => {
       return res.status(401).json({ error: 'Geçersiz token' });
     }
 
-    const { rows } = await db.query('SELECT id, username, is_admin, is_vip, is_active, created_at FROM users WHERE id = $1', [payload.id]);
+    const { rows } = await db.query('SELECT id, username, is_admin, is_vip, vip_expires_at, is_active, created_at FROM users WHERE id = $1', [payload.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
     
-    res.json(rows[0]);
+    const user = rows[0];
+    // Compute effective VIP: must be flagged AND not expired
+    const now = new Date();
+    const effectiveVip = user.is_vip && (!user.vip_expires_at || new Date(user.vip_expires_at) > now) ? 1 : 0;
+    
+    res.json({ ...user, is_vip: effectiveVip });
   } catch (err) {
     next(err);
   }

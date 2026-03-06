@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isLoggedIn: !!user,
     isAdmin:    !!user?.is_admin,
-    isVIP:      !!(user?.is_vip || user?.is_admin),
+    isVIP:      !!(user?.is_admin || (user?.is_vip && (!user?.vip_expires_at || new Date(user.vip_expires_at) > new Date()))),
     login,
     register,
     logout,

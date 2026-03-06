@@ -38,11 +38,38 @@ const processImageUpload = (file) => {
   return imagePathToUrl(optimizedPath);
 };
 
-// GET /api/categories
+// GET /api/categories — paginated + searchable
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM categories ORDER BY name');
-    res.json(rows);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const search = (req.query.search || '').trim();
+    const offset = (page - 1) * limit;
+
+    let whereClause = 'WHERE is_active = 1';
+    const params = [];
+    let paramIdx = 1;
+
+    if (search) {
+      whereClause += ` AND name ILIKE $${paramIdx++}`;
+      params.push(`%${search}%`);
+    }
+
+    const countResult = await db.query(`SELECT COUNT(*) as total FROM categories ${whereClause}`, params);
+    const total = parseInt(countResult.rows[0].total);
+
+    const { rows } = await db.query(
+      `SELECT * FROM categories ${whereClause} ORDER BY name LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      categories: rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

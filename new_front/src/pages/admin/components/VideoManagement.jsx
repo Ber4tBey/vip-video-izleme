@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Plus,
   Pencil,
@@ -7,7 +7,8 @@ import {
   ToggleLeft,
   ToggleRight,
   Save,
-  X
+  X,
+  HardDrive
 } from 'lucide-react'
 import { useVideo } from '../../../context/VideoContext'
 import VideoThumbnail from '../../../components/ui/VideoThumbnail'
@@ -15,6 +16,7 @@ import {
   getMediaUrl,
   getSecureVideoUrl
 } from '../../../utils/api'
+import api from '../../../utils/api'
 import { slugify } from '../../../utils/slugify'
 
 const EMPTY_FORM = {
@@ -26,6 +28,15 @@ const EMPTY_FORM = {
   isVIP: false,
   isActive: true
 }
+
+const MIN_FREE_GB = 10;
+
+const formatBytes = (bytes) => {
+  if (bytes >= 1099511627776) return (bytes / 1099511627776).toFixed(1) + ' TB';
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1024).toFixed(1) + ' KB';
+};
 
 const VideoManagement = () => {
   const {
@@ -47,6 +58,27 @@ const VideoManagement = () => {
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [isSaving, setIsSaving] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+
+  // Disk space state
+  const [diskInfo, setDiskInfo] = useState(null)
+  const [diskLoading, setDiskLoading] = useState(true)
+
+  const fetchDiskInfo = useCallback(async () => {
+    try {
+      setDiskLoading(true);
+      const data = await api.get('/system/disk');
+      setDiskInfo(data);
+    } catch (e) {
+      console.error('Disk info fetch error:', e);
+    } finally {
+      setDiskLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchDiskInfo(); }, [fetchDiskInfo])
+
+  const freeGB = diskInfo ? diskInfo.freeBytes / (1024 ** 3) : Infinity;
+  const isLowDisk = freeGB < MIN_FREE_GB;
 
   const flash = (type, text) => {
     setMsg({ type, text })
@@ -75,6 +107,11 @@ const VideoManagement = () => {
       return
     }
 
+    if (isLowDisk && form.videoFile) {
+      flash('error', `Yetersiz disk alanı! Kalan: ${diskInfo ? formatBytes(diskInfo.freeBytes) : '?'}. En az 10 GB boş alan gerekli.`)
+      return
+    }
+
     try {
       setIsSaving(true)
       setUploadProgress(0)
@@ -96,6 +133,7 @@ const VideoManagement = () => {
         });
         flash('success', 'Video eklendi ve islenmeye basladi.');
         fetchAdminVideos();
+        fetchDiskInfo(); // refresh disk info after upload
       } else if (editId) {
         // Just updating metadata, no new video file
         const fd = new FormData();
@@ -145,13 +183,53 @@ const VideoManagement = () => {
 
   return (
     <div className='space-y-5'>
+      {/* Disk Space Info */}
+      <div className='card p-4'>
+        <div className='flex items-center gap-2 mb-3'>
+          <HardDrive size={16} className='text-primary-400' />
+          <h3 className='text-white font-semibold text-sm'>Sunucu Disk Durumu</h3>
+        </div>
+        {diskLoading ? (
+          <p className='text-gray-500 text-xs'>Yükleniyor...</p>
+        ) : diskInfo ? (
+          <div className='space-y-2'>
+            <div className='w-full bg-dark-600 rounded-full h-3 overflow-hidden'>
+              <div
+                className={`h-3 rounded-full transition-all duration-500 ${
+                  isLowDisk ? 'bg-red-500' : freeGB < 50 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: diskInfo.usedPct }}
+              />
+            </div>
+            <div className='flex flex-wrap items-center justify-between gap-2 text-xs'>
+              <div className='flex items-center gap-3'>
+                <span className='text-gray-400'>Toplam: <span className='text-white font-medium'>{formatBytes(diskInfo.totalBytes)}</span></span>
+                <span className='text-gray-400'>Kullanılan: <span className='text-white font-medium'>{formatBytes(diskInfo.usedBytes)}</span></span>
+                <span className={`font-medium ${isLowDisk ? 'text-red-400' : freeGB < 50 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  Boş: {formatBytes(diskInfo.freeBytes)}
+                </span>
+              </div>
+              <span className='text-gray-500'>{diskInfo.usedPct} dolu</span>
+            </div>
+            {isLowDisk && (
+              <div className='mt-1 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/40'>
+                <p className='text-red-400 text-xs font-semibold'>⚠ Kritik: Disk alanı 10 GB altında! Video yüklemesi engellenmiştir.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className='text-gray-500 text-xs'>Disk bilgisi alınamadı.</p>
+        )}
+      </div>
+
       {!showForm ? (
         <button
           onClick={() => setShowForm(true)}
-          className='btn-primary text-sm'
+          disabled={isLowDisk}
+          className='btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed'
         >
           <Plus size={15} />
-          Yeni Video Ekle
+          {isLowDisk ? 'Disk Alanı Yetersiz' : 'Yeni Video Ekle'}
         </button>
       ) : (
         <div className='card p-5'>

@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const db = require('./database');
 const { checkVideoToken } = require('./middleware/auth');
 const {
@@ -211,6 +212,24 @@ app.get('/uploads/videos/*', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+
+// GET /api/system/disk — admin only disk space info
+const { adminOnly: adminOnlyMw } = require('./middleware/auth');
+app.get('/api/system/disk', adminOnlyMw, (req, res) => {
+  try {
+    // /hostfs is bind-mounted from host root to read real disk info
+    const target = require('fs').existsSync('/hostfs') ? '/hostfs' : '/';
+    const output = execSync(`df -B1 ${target} | tail -1`).toString().trim();
+    const parts = output.split(/\s+/);
+    const totalBytes = parseInt(parts[1]) || 0;
+    const usedBytes  = parseInt(parts[2]) || 0;
+    const freeBytes  = parseInt(parts[3]) || 0;
+    const usedPct    = parts[4] || '0%';
+    res.json({ totalBytes, usedBytes, freeBytes, usedPct });
+  } catch (err) {
+    res.status(500).json({ error: 'Disk bilgisi alinamadi' });
+  }
+});
 
 app.use((req, res) => res.status(404).json({ error: 'Endpoint bulunamadi' }));
 

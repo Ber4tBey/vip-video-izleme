@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useVideo } from '../../context/VideoContext';
@@ -6,35 +6,66 @@ import VideoCard from '../../components/ui/VideoCard';
 import Pagination from '../../components/ui/Pagination';
 import AdBanner from '../../components/ui/AdBanner';
 import SEO from '../../components/SEO';
+import api from '../../utils/api';
 
 const PER_PAGE = 20;
 
 const VideosPage = () => {
-  const { activeVideos, activeCategories, activeModels } = useVideo();
+  const { activeCategories, activeModels } = useVideo();
   const [searchParams] = useSearchParams();
+
+  const [videos, setVideos] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+
   const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [page, setPage] = useState(1);
 
-  const filtered = useMemo(() => {
-    return activeVideos.filter((v) => {
-      const matchSearch = !searchTerm || v.title.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCat = !selectedCategory || v.categoryId === selectedCategory;
-      const matchModel = !selectedModel || v.modelId === selectedModel;
-      const matchType =
-        typeFilter === 'all' ? true : typeFilter === 'vip' ? v.is_vip : !v.is_vip;
-      return matchSearch && matchCat && matchModel && matchType;
-    });
-  }, [activeVideos, searchTerm, selectedCategory, selectedModel, typeFilter]);
+  const debounceRef = useRef(null);
 
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const fetchVideos = useCallback(async (p, search, category, model, type) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: p, limit: PER_PAGE });
+      if (search) params.set('search', search);
+      if (category) params.set('category', category);
+      if (model) params.set('model', model);
+      if (type === 'vip') params.set('vip', '1');
+      else if (type === 'free') params.set('vip', '0');
 
-  const handleFilterChange = (cb) => {
-    cb();
-    setPage(1); // filtre değişince 1. sayfaya dön
+      const data = await api.get(`/videos?${params.toString()}`);
+      setVideos(data.videos || []);
+      setTotal(data.total || 0);
+      setTotalPages(data.totalPages || 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch on mount and when page/filters change
+  useEffect(() => {
+    fetchVideos(page, searchTerm, selectedCategory, selectedModel, typeFilter);
+  }, [page, selectedCategory, selectedModel, typeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(1);
+      fetchVideos(1, value, selectedCategory, selectedModel, typeFilter);
+    }, 400);
+  };
+
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setPage(1);
   };
 
   const clearFilters = () => {
@@ -43,6 +74,7 @@ const VideosPage = () => {
     setSelectedModel('');
     setTypeFilter('all');
     setPage(1);
+    fetchVideos(1, '', '', '', 'all');
   };
 
   const hasFilters = searchTerm || selectedCategory || selectedModel || typeFilter !== 'all';
@@ -67,7 +99,7 @@ const VideosPage = () => {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => handleFilterChange(() => setSearchTerm(e.target.value))}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Video ara..."
               className="input-field pl-9 py-2 text-sm"
             />
@@ -75,7 +107,7 @@ const VideosPage = () => {
 
           <select
             value={selectedCategory}
-            onChange={(e) => handleFilterChange(() => setSelectedCategory(e.target.value))}
+            onChange={(e) => handleFilterChange(setSelectedCategory, e.target.value)}
             className="input-field w-auto text-sm"
           >
             <option value="">Tüm Kategoriler</option>
@@ -86,7 +118,7 @@ const VideosPage = () => {
 
           <select
             value={selectedModel}
-            onChange={(e) => handleFilterChange(() => setSelectedModel(e.target.value))}
+            onChange={(e) => handleFilterChange(setSelectedModel, e.target.value)}
             className="input-field w-auto text-sm"
           >
             <option value="">Tüm Modeller</option>
@@ -99,7 +131,7 @@ const VideosPage = () => {
             {[['all', 'Tümü'], ['free', 'Ücretsiz'], ['vip', 'VIP']].map(([val, label]) => (
               <button
                 key={val}
-                onClick={() => handleFilterChange(() => setTypeFilter(val))}
+                onClick={() => handleFilterChange(setTypeFilter, val)}
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   typeFilter === val
                     ? 'bg-primary-700 text-white'
@@ -119,7 +151,7 @@ const VideosPage = () => {
           )}
         </div>
         <p className="text-xs text-gray-500">
-          {filtered.length} video bulundu
+          {total} video bulundu
           {totalPages > 1 && ` · Sayfa ${page}/${totalPages}`}
         </p>
       </div>
@@ -128,14 +160,16 @@ const VideosPage = () => {
       <AdBanner slotId="videos-leaderboard" size="leaderboard" />
 
       {/* Grid */}
-      {paginated.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-20 text-gray-500">Yükleniyor...</div>
+      ) : videos.length === 0 ? (
         <div className="text-center py-20 text-gray-500">
           <Search size={40} className="mx-auto mb-4 opacity-30" />
           <p>Filtrelerinize uygun video bulunamadı.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {paginated.map((video) => (
+          {videos.map((video) => (
             <VideoCard key={video.id} video={video} />
           ))}
         </div>

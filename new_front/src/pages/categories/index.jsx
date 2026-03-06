@@ -1,27 +1,58 @@
-import { useState } from 'react';
-import { Tag, Play } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Tag, Play, Search } from 'lucide-react';
 import { useVideo } from '../../context/VideoContext';
 import VideoCard from '../../components/ui/VideoCard';
 import VideoPlayer from '../../components/ui/VideoPlayer';
 import Pagination from '../../components/ui/Pagination';
 import SEO from '../../components/SEO';
 import { getMediaUrl } from '../../utils/api';
+import api from '../../utils/api';
 
 const CATS_PER_PAGE = 20;
 const VIDEOS_PER_PAGE = 20;
 
 const CategoriesPage = () => {
-  const { activeCategories, activeVideos } = useVideo();
+  const { activeVideos } = useVideo();
+  const [categories, setCategories] = useState([]);
+  const [catTotal, setCatTotal] = useState(0);
+  const [catTotalPages, setCatTotalPages] = useState(0);
+  const [catPage, setCatPage] = useState(1);
+  const [catLoading, setCatLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const debounceRef = useRef(null);
+
   const [selectedCat, setSelectedCat] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [catPage, setCatPage] = useState(1);
   const [videoPage, setVideoPage] = useState(1);
 
-  const catTotalPages = Math.ceil(activeCategories.length / CATS_PER_PAGE);
-  const paginatedCats = activeCategories.slice(
-    (catPage - 1) * CATS_PER_PAGE,
-    catPage * CATS_PER_PAGE
-  );
+  const fetchCategories = useCallback(async (page, search) => {
+    setCatLoading(true);
+    try {
+      const params = new URLSearchParams({ page, limit: CATS_PER_PAGE });
+      if (search) params.set('search', search);
+      const data = await api.get(`/categories?${params.toString()}`);
+      setCategories(data.categories || []);
+      setCatTotal(data.total || 0);
+      setCatTotalPages(data.totalPages || 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCatLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCategories(catPage, searchTerm);
+  }, [catPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setCatPage(1);
+      fetchCategories(1, value);
+    }, 400);
+  };
 
   const catVideos = selectedCat
     ? activeVideos.filter((v) => v.category_id === selectedCat.id)
@@ -101,24 +132,43 @@ const CategoriesPage = () => {
         </div>
       ) : (
         <>
-          {activeCategories.length === 0 ? (
+          {/* Search bar */}
+          <div className="card p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-48">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Kategori ara..."
+                  className="input-field pl-9 py-2 text-sm"
+                />
+              </div>
+              <span className="text-xs text-gray-500">
+                {catTotal} kategori{searchTerm && ' bulundu'}
+              </span>
+            </div>
+          </div>
+
+          {catLoading ? (
+            <div className="text-center py-16 text-gray-500">Yükleniyor...</div>
+          ) : categories.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <Tag size={40} className="mx-auto mb-4 opacity-30" />
-              <p>Henüz kategori eklenmemiş.</p>
+              <p>{searchTerm ? 'Arama sonucu bulunamadı.' : 'Henüz kategori eklenmemiş.'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {paginatedCats.map((cat, i) => {
+              {categories.map((cat, i) => {
                 const count = activeVideos.filter((v) => v.category_id === cat.id).length;
-                const globalIdx = activeCategories.indexOf(cat);
-                const overlay = overlayColors[globalIdx % overlayColors.length];
+                const overlay = overlayColors[i % overlayColors.length];
                 return (
                   <button
                     key={cat.id}
                     onClick={() => handleSelectCat(cat)}
                     className="card overflow-hidden hover:-translate-y-1 transition-all duration-300 group relative aspect-video text-left"
                   >
-                    {/* Arka plan resmi */}
                     {cat.image_url ? (
                       <img
                         src={getMediaUrl(cat.image_url)}
@@ -131,9 +181,7 @@ const CategoriesPage = () => {
                     ) : (
                       <div className={`absolute inset-0 bg-gradient-to-br ${overlay.replace('/70', '/40')} to-dark-900`} />
                     )}
-                    {/* Koyu gradient overlay */}
                     <div className={`absolute inset-0 bg-gradient-to-t ${overlay} to-transparent`} />
-                    {/* İçerik */}
                     <div className="absolute bottom-0 left-0 right-0 p-3 z-10">
                       <p className="font-bold text-white text-sm drop-shadow">{cat.name}</p>
                       <p className="text-xs text-white/70 mt-0.5">{count} video</p>
