@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { AuthProvider } from './context/AuthContext';
@@ -10,16 +10,25 @@ import Layout from './components/layout/Layout';
 import AgeVerificationModal from './components/modals/AgeVerificationModal';
 import { getItem, STORAGE_KEYS } from './utils/storage';
 
+// Eagerly load home (first paint)
 import HomePage from './pages/home';
-import VideosPage from './pages/videos';
-import VIPPage from './pages/vip';
-import ModelsPage from './pages/models';
-import CategoriesPage from './pages/categories';
-import TrendsPage from './pages/trends';
-import BuyVIPPage from './pages/buy-vip';
-import LoginPage from './pages/login';
-import AdminPage from './pages/admin';
-import VideoPage from './pages/video';
+
+// Lazy load everything else for code splitting
+const VideosPage = lazy(() => import('./pages/videos'));
+const VIPPage = lazy(() => import('./pages/vip'));
+const ModelsPage = lazy(() => import('./pages/models'));
+const CategoriesPage = lazy(() => import('./pages/categories'));
+const TrendsPage = lazy(() => import('./pages/trends'));
+const BuyVIPPage = lazy(() => import('./pages/buy-vip'));
+const LoginPage = lazy(() => import('./pages/login'));
+const AdminPage = lazy(() => import('./pages/admin'));
+const VideoPage = lazy(() => import('./pages/video'));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[40vh]">
+    <div className="w-8 h-8 border-3 border-primary-600 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 function App() {
   const [ageVerified, setAgeVerified] = useState(() =>
@@ -38,6 +47,7 @@ function App() {
               <AgeVerificationModal onVerify={() => setAgeVerified(true)} />
             )}
             <Layout>
+              <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/videos" element={<VideosPage />} />
@@ -53,6 +63,7 @@ function App() {
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="*" element={<HomePage />} />
               </Routes>
+              </Suspense>
             </Layout>
           </BrowserRouter>
             </SettingsProvider>
