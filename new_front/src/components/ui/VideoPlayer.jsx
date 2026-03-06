@@ -1,7 +1,7 @@
 import { X, Crown, Eye, Calendar, Tag, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useVideo } from '../../context/VideoContext';
-import { getMediaUrl, getVideoPlaybackUrl, isStreamtapeSource } from '../../utils/api';
+import { getMediaUrl, getVideoPlaybackUrl } from '../../utils/api';
 import HlsVideoPlayer from './HlsVideoPlayer';
 
 const VideoPlayer = ({ video, onClose }) => {
@@ -83,28 +83,19 @@ const VideoPlayer = ({ video, onClose }) => {
           </button>
         </div>
 
-        <div className="aspect-video bg-black">
+        <div className="bg-black">
           {playbackLoading ? (
-            <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+            <div className="aspect-video w-full flex items-center justify-center text-sm text-gray-400">
               Video hazirlaniyor...
             </div>
           ) : playbackError ? (
-            <div className="w-full h-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
+            <div className="aspect-video w-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
               {playbackError}
             </div>
           ) : (
             <HlsVideoPlayer
               src={playbackUrl}
               poster={getMediaUrl(video.thumbnail_url)}
-              controls
-              autoPlay
-              playsInline
-              preload="metadata"
-              referrerPolicy="no-referrer"
-              className="w-full h-full"
-              controlsList="nodownload noplaybackrate"
-              disablePictureInPicture
-              onContextMenu={(e) => e.preventDefault()}
             />
           )}
         </div>

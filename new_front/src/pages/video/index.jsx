@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Crown, Send, ArrowLeft, Eye, Lock, Tag, Users } from 'lucide-react';
+import { Crown, Send, ArrowLeft, Eye, Lock, Tag, Users, Loader2 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { useVideo } from '../../context/VideoContext';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,7 @@ import HlsVideoPlayer from '../../components/ui/HlsVideoPlayer';
 
 const VideoPage = () => {
   const { slug } = useParams();
-  const { activeVideos, incrementViewCount } = useVideo();
+  const { activeVideos, incrementViewCount, loading: videosLoading } = useVideo();
   const { isVIP, isAdmin } = useAuth();
   const { settings } = useSettings();
   const navigate = useNavigate();
@@ -60,6 +60,13 @@ const VideoPage = () => {
   }, [canWatch, video?.id, video?.url, video?.streamtape_url]);
 
   if (!video) {
+    if (videosLoading) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader2 size={40} className="animate-spin text-primary-500" />
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
         <p className="text-gray-500 text-lg mb-4">Video bulunamadi.</p>
@@ -90,28 +97,19 @@ const VideoPage = () => {
         </button>
 
         {canWatch ? (
-          <div className="rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video">
+          <div className="rounded-2xl overflow-hidden shadow-2xl">
             {playbackLoading ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+              <div className="aspect-video bg-black w-full flex items-center justify-center text-sm text-gray-400">
                 Video hazirlaniyor...
               </div>
             ) : playbackError ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
+              <div className="aspect-video bg-black w-full flex items-center justify-center text-sm text-red-400 px-4 text-center">
                 {playbackError}
               </div>
             ) : (
               <HlsVideoPlayer
                 src={playbackUrl}
                 poster={getMediaUrl(video.thumbnail_url)}
-                controls
-                autoPlay
-                playsInline
-                preload="metadata"
-                referrerPolicy="no-referrer"
-                className="w-full h-full"
-                controlsList="nodownload noplaybackrate"
-                disablePictureInPicture
-                onContextMenu={(e) => e.preventDefault()}
                 onPlay={onVideoPlay}
               />
             )}
