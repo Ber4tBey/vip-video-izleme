@@ -18,7 +18,7 @@ const SEO = ({
   const siteName = settings?.siteName || 'OnlyMix';
   const defaultDescription = 'En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle. VIP içerikler, yerli modeller ve ifşa arşivleri.';
   const defaultKeywords = 'türk ifşa, porno, sex, sikiş, türkçe porno, yerli porno, ifşa videoları, türk modeller, onlyfans türk, vip porno, hd porno izle, porn, türk porno, ifşa izle';
-  const defaultImage = `${SITE_URL}/android-chrome-192x192.png`;
+  const defaultImage = `${SITE_URL}/favicon.png`;
 
   const finalTitle = title ? `${title}` : `${siteName} — Türk İfşa, Porno ve Sex Videoları İzle`;
   const finalDescription = description || defaultDescription;

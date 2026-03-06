@@ -218,7 +218,7 @@ const prerenderHtml = (meta) => {
   const siteUrl = 'https://onlymix.tube';
   const title = meta.title || 'OnlyMix — Türk İfşa, Porno ve Sex Videoları İzle';
   const desc = meta.description || 'En yeni türk ifşa, porno, sikiş ve sex videolarını full HD kalitede izle.';
-  const image = meta.image || `${siteUrl}/android-chrome-192x192.png`;
+  const image = meta.image || `${siteUrl}/favicon.png`;
   const url = meta.url || siteUrl;
   const type = meta.type || 'website';
   const jsonLd = meta.jsonLd ? `<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>` : '';
