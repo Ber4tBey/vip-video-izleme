@@ -75,6 +75,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/models/:slug — single model by slug
+router.get('/:slug', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM models WHERE slug = $1 AND is_active = 1', [req.params.slug]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Model bulunamadi' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/models (admin)
 router.post('/', adminOnly, upload.single('image'), async (req, res) => {
   try {

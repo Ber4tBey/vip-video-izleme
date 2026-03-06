@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tag, Play, Search } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useVideo } from '../../context/VideoContext';
 import VideoCard from '../../components/ui/VideoCard';
-import VideoPlayer from '../../components/ui/VideoPlayer';
 import Pagination from '../../components/ui/Pagination';
 import SEO from '../../components/SEO';
 import { getMediaUrl } from '../../utils/api';
@@ -12,7 +12,11 @@ const CATS_PER_PAGE = 20;
 const VIDEOS_PER_PAGE = 20;
 
 const CategoriesPage = () => {
+  const { slug } = useParams();
+  const navigate = useNavigate();
   const { activeVideos } = useVideo();
+
+  // List state
   const [categories, setCategories] = useState([]);
   const [catTotal, setCatTotal] = useState(0);
   const [catTotalPages, setCatTotalPages] = useState(0);
@@ -21,10 +25,12 @@ const CategoriesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const debounceRef = useRef(null);
 
+  // Detail state
   const [selectedCat, setSelectedCat] = useState(null);
-  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [videoPage, setVideoPage] = useState(1);
 
+  // Fetch category list
   const fetchCategories = useCallback(async (page, search) => {
     setCatLoading(true);
     try {
@@ -41,8 +47,23 @@ const CategoriesPage = () => {
     }
   }, []);
 
+  // Fetch single category by slug
   useEffect(() => {
-    fetchCategories(catPage, searchTerm);
+    if (slug) {
+      setDetailLoading(true);
+      api.get(`/categories/${slug}`)
+        .then((cat) => { setSelectedCat(cat); setVideoPage(1); })
+        .catch(() => { setSelectedCat(null); navigate('/categories', { replace: true }); })
+        .finally(() => setDetailLoading(false));
+    } else {
+      setSelectedCat(null);
+      fetchCategories(catPage, searchTerm);
+    }
+  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch list when page changes (only in list mode)
+  useEffect(() => {
+    if (!slug) fetchCategories(catPage, searchTerm);
   }, [catPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (value) => {
@@ -54,6 +75,7 @@ const CategoriesPage = () => {
     }, 400);
   };
 
+  // Videos for selected category
   const catVideos = selectedCat
     ? activeVideos.filter((v) => v.category_id === selectedCat.id)
     : [];
@@ -62,12 +84,6 @@ const CategoriesPage = () => {
     (videoPage - 1) * VIDEOS_PER_PAGE,
     videoPage * VIDEOS_PER_PAGE
   );
-
-  const handleSelectCat = (cat) => {
-    setSelectedCat(cat);
-    setVideoPage(1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const overlayColors = [
     'from-primary-900/70', 'from-purple-900/70', 'from-emerald-900/70',
@@ -87,12 +103,14 @@ const CategoriesPage = () => {
         Kategoriler
       </h1>
 
-      {selectedCat ? (
+      {detailLoading ? (
+        <div className="text-center py-16 text-gray-500">Yükleniyor...</div>
+      ) : selectedCat ? (
         <div className="space-y-6 animate-fade-in">
           <div className="flex items-center gap-4">
-            <button onClick={() => { setSelectedCat(null); setVideoPage(1); }} className="btn-ghost text-sm">
+            <Link to="/categories" className="btn-ghost text-sm">
               ← Geri
-            </button>
+            </Link>
             <div className="flex items-center gap-3">
               {selectedCat.image_url && (
                 <img
@@ -119,7 +137,7 @@ const CategoriesPage = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {paginatedVideos.map((v) => (
-                <VideoCard key={v.id} video={v} onClick={setSelectedVideo} />
+                <VideoCard key={v.id} video={v} />
               ))}
             </div>
           )}
@@ -164,10 +182,10 @@ const CategoriesPage = () => {
                 const count = activeVideos.filter((v) => v.category_id === cat.id).length;
                 const overlay = overlayColors[i % overlayColors.length];
                 return (
-                  <button
+                  <Link
                     key={cat.id}
-                    onClick={() => handleSelectCat(cat)}
-                    className="card overflow-hidden hover:-translate-y-1 transition-all duration-300 group relative aspect-video text-left"
+                    to={`/categories/${cat.slug}`}
+                    className="card overflow-hidden hover:-translate-y-1 transition-all duration-300 group relative aspect-video text-left block"
                   >
                     {cat.image_url ? (
                       <img
@@ -186,7 +204,7 @@ const CategoriesPage = () => {
                       <p className="font-bold text-white text-sm drop-shadow">{cat.name}</p>
                       <p className="text-xs text-white/70 mt-0.5">{count} video</p>
                     </div>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -198,10 +216,6 @@ const CategoriesPage = () => {
             onPageChange={(p) => { setCatPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
           />
         </>
-      )}
-
-      {selectedVideo && (
-        <VideoPlayer video={selectedVideo} onClose={() => setSelectedVideo(null)} />
       )}
     </div>
     </>

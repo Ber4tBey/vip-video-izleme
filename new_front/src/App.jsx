@@ -43,7 +43,9 @@ function App() {
                 <Route path="/videos" element={<VideosPage />} />
                 <Route path="/vip" element={<VIPPage />} />
                 <Route path="/models" element={<ModelsPage />} />
+                <Route path="/models/:slug" element={<ModelsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/categories/:slug" element={<CategoriesPage />} />
                 <Route path="/trends" element={<TrendsPage />} />
                 <Route path="/buy-vip" element={<BuyVIPPage />} />
                 <Route path="/login" element={<LoginPage />} />

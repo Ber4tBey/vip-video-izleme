@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Users, Play, Search } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useVideo } from '../../context/VideoContext';
 import VideoCard from '../../components/ui/VideoCard';
-import VideoPlayer from '../../components/ui/VideoPlayer';
 import Pagination from '../../components/ui/Pagination';
 import SEO from '../../components/SEO';
 import { getMediaUrl } from '../../utils/api';
@@ -12,7 +12,11 @@ const MODELS_PER_PAGE = 20;
 const VIDEOS_PER_PAGE = 20;
 
 const ModelsPage = () => {
+  const { slug } = useParams();
+  const navigate = useNavigate();
   const { activeVideos } = useVideo();
+
+  // List state
   const [models, setModels] = useState([]);
   const [modelTotal, setModelTotal] = useState(0);
   const [modelTotalPages, setModelTotalPages] = useState(0);
@@ -21,10 +25,12 @@ const ModelsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const debounceRef = useRef(null);
 
+  // Detail state
   const [selectedModel, setSelectedModel] = useState(null);
-  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [videoPage, setVideoPage] = useState(1);
 
+  // Fetch model list
   const fetchModels = useCallback(async (page, search) => {
     setModelLoading(true);
     try {
@@ -41,8 +47,23 @@ const ModelsPage = () => {
     }
   }, []);
 
+  // Fetch single model by slug
   useEffect(() => {
-    fetchModels(modelPage, searchTerm);
+    if (slug) {
+      setDetailLoading(true);
+      api.get(`/models/${slug}`)
+        .then((model) => { setSelectedModel(model); setVideoPage(1); })
+        .catch(() => { setSelectedModel(null); navigate('/models', { replace: true }); })
+        .finally(() => setDetailLoading(false));
+    } else {
+      setSelectedModel(null);
+      fetchModels(modelPage, searchTerm);
+    }
+  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch list when page changes (only in list mode)
+  useEffect(() => {
+    if (!slug) fetchModels(modelPage, searchTerm);
   }, [modelPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (value) => {
@@ -54,7 +75,7 @@ const ModelsPage = () => {
     }, 400);
   };
 
-  // Videos for selected model (client-side from context, since they are per-model subset)
+  // Videos for selected model
   const modelVideos = selectedModel
     ? activeVideos.filter((v) => v.model_id === selectedModel.id)
     : [];
@@ -63,12 +84,6 @@ const ModelsPage = () => {
     (videoPage - 1) * VIDEOS_PER_PAGE,
     videoPage * VIDEOS_PER_PAGE
   );
-
-  const handleSelectModel = (m) => {
-    setSelectedModel(m);
-    setVideoPage(1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   return (
     <>
@@ -83,15 +98,14 @@ const ModelsPage = () => {
         Modeller
       </h1>
 
-      {selectedModel ? (
+      {detailLoading ? (
+        <div className="text-center py-16 text-gray-500">Yükleniyor...</div>
+      ) : selectedModel ? (
         <div className="space-y-6 animate-fade-in">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => { setSelectedModel(null); setVideoPage(1); }}
-              className="btn-ghost text-sm"
-            >
+            <Link to="/models" className="btn-ghost text-sm">
               ← Geri
-            </button>
+            </Link>
             <div className="flex items-center gap-3">
               {selectedModel.image_url && (
                 <img
@@ -105,7 +119,7 @@ const ModelsPage = () => {
               )}
               <div>
                 <h2 className="text-xl font-bold text-white">{selectedModel.name}</h2>
-                {selectedModel.bio && <p className="text-gray-400 text-sm">{selectedModel.bio}</p>}
+                {selectedModel.description && <p className="text-gray-400 text-sm">{selectedModel.description}</p>}
                 <p className="text-gray-500 text-xs mt-0.5">{modelVideos.length} video</p>
               </div>
             </div>
@@ -119,7 +133,7 @@ const ModelsPage = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {paginatedVideos.map((v) => (
-                <VideoCard key={v.id} video={v} onClick={setSelectedVideo} />
+                <VideoCard key={v.id} video={v} />
               ))}
             </div>
           )}
@@ -163,10 +177,10 @@ const ModelsPage = () => {
               {models.map((model) => {
                 const count = activeVideos.filter((v) => v.model_id === model.id).length;
                 return (
-                  <button
+                  <Link
                     key={model.id}
-                    onClick={() => handleSelectModel(model)}
-                    className="card overflow-hidden hover:border-primary-600 hover:-translate-y-1 transition-all duration-300 group text-left"
+                    to={`/models/${model.slug}`}
+                    className="card overflow-hidden hover:border-primary-600 hover:-translate-y-1 transition-all duration-300 group text-left block"
                   >
                     <div className="aspect-square bg-dark-600 overflow-hidden">
                       {model.image_url ? (
@@ -195,7 +209,7 @@ const ModelsPage = () => {
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">{count} video</p>
                     </div>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -207,10 +221,6 @@ const ModelsPage = () => {
             onPageChange={(p) => { setModelPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
           />
         </>
-      )}
-
-      {selectedVideo && (
-        <VideoPlayer video={selectedVideo} onClose={() => setSelectedVideo(null)} />
       )}
     </div>
     </>
