@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, Tag } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, Tag, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useVideo } from '../../../context/VideoContext';
 import FileUpload from '../../../components/ui/FileUpload';
 import { getMediaUrl } from '../../../utils/api';
@@ -9,6 +9,9 @@ const CategoryManagement = () => {
   const [form, setForm] = useState({ name: '', file: null, previewUrl: '' });
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
 
   const flash = (type, text) => {
     setMsg({ type, text });
@@ -37,6 +40,21 @@ const CategoryManagement = () => {
   const startEdit = (c) => {
     setForm({ name: c.name, file: null, previewUrl: getMediaUrl(c.image_url) || '' });
     setEditId(c.id);
+  };
+
+  const filteredCategories = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter(c => c.name?.toLowerCase().includes(q));
+  }, [categories, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCategories.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedCategories = filteredCategories.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+    setPage(1);
   };
 
   return (
@@ -68,11 +86,24 @@ const CategoryManagement = () => {
         {msg.text && <p className={`text-xs mt-2 ${msg.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>{msg.text}</p>}
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <input
+          value={search}
+          onChange={handleSearchChange}
+          placeholder="Kategorilerde ara..."
+          className="input-field text-sm pl-8 w-full"
+        />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {categories.length === 0 ? (
-          <p className="text-gray-500 text-sm col-span-full text-center py-8">Henüz kategori yok.</p>
+        {pagedCategories.length === 0 ? (
+          <p className="text-gray-500 text-sm col-span-full text-center py-8">
+            {search ? 'Arama sonucu bulunamadı.' : 'Henüz kategori yok.'}
+          </p>
         ) : (
-          categories.map((c) => (
+          pagedCategories.map((c) => (
             <div key={c.id} className={`card p-4 flex items-center gap-3 ${!c.is_active ? 'opacity-50' : ''}`}>
               <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-dark-500 border border-dark-400">
                 {c.image_url ? (
@@ -105,6 +136,55 @@ const CategoryManagement = () => {
           ))
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500 text-xs">
+            {filteredCategories.length} kategori · Sayfa {currentPage}/{totalPages}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${i}`} className="px-1 text-gray-600">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`min-w-[30px] px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                      p === currentPage
+                        ? 'bg-primary text-white'
+                        : 'bg-dark-600 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

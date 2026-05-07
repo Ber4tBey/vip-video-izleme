@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Plus,
   Pencil,
@@ -8,7 +8,10 @@ import {
   ToggleRight,
   Save,
   X,
-  HardDrive
+  HardDrive,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useVideo } from '../../../context/VideoContext'
 import VideoThumbnail from '../../../components/ui/VideoThumbnail'
@@ -58,6 +61,9 @@ const VideoManagement = () => {
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [isSaving, setIsSaving] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 15
 
   // Disk space state
   const [diskInfo, setDiskInfo] = useState(null)
@@ -180,6 +186,21 @@ const VideoManagement = () => {
 
   const allCategories = categories
   const allModels = models
+
+  const filteredVideos = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return adminVideos
+    return adminVideos.filter(v => v.title?.toLowerCase().includes(q))
+  }, [adminVideos, search])
+
+  const totalPages = Math.max(1, Math.ceil(filteredVideos.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pagedVideos = filteredVideos.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value)
+    setPage(1)
+  }
 
   return (
     <div className='space-y-5'>
@@ -397,6 +418,17 @@ const VideoManagement = () => {
         </p>
       )}
 
+      {/* Search */}
+      <div className='relative'>
+        <Search size={14} className='absolute left-3 top-1/2 -translate-y-1/2 text-gray-500' />
+        <input
+          value={search}
+          onChange={handleSearchChange}
+          placeholder='Videolarda ara...'
+          className='input-field text-sm pl-8 w-full'
+        />
+      </div>
+
       <div className='card overflow-hidden'>
         <div className='overflow-x-auto'>
           <table className='w-full text-sm'>
@@ -420,14 +452,14 @@ const VideoManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {adminVideos.length === 0 ? (
+              {pagedVideos.length === 0 ? (
                 <tr>
                   <td colSpan={5} className='text-center py-10 text-gray-500'>
-                    Henuz video yok.
+                    {search ? 'Arama sonucu bulunamadı.' : 'Henuz video yok.'}
                   </td>
                 </tr>
               ) : (
-                adminVideos.map(video => {
+                pagedVideos.map(video => {
                   const category = allCategories.find(
                     c => c.id === (video.categoryId ?? video.category_id)
                   )
@@ -530,6 +562,55 @@ const VideoManagement = () => {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className='flex items-center justify-between text-sm'>
+          <span className='text-gray-500 text-xs'>
+            {filteredVideos.length} video · Sayfa {currentPage}/{totalPages}
+          </span>
+          <div className='flex items-center gap-1'>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className='p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all'
+            >
+              <ChevronLeft size={15} />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((p, i) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${i}`} className='px-1 text-gray-600'>...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`min-w-[30px] px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                      p === currentPage
+                        ? 'bg-primary text-white'
+                        : 'bg-dark-600 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className='p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all'
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

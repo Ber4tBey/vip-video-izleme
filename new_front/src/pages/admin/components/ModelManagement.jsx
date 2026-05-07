@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Trash2, ToggleLeft, ToggleRight, Pencil, Save, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useVideo } from '../../../context/VideoContext';
 import FileUpload from '../../../components/ui/FileUpload';
 import { getMediaUrl } from '../../../utils/api';
@@ -11,6 +11,9 @@ const ModelManagement = () => {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
 
   const flash = (type, text) => {
     setMsg({ type, text });
@@ -45,6 +48,21 @@ const ModelManagement = () => {
   const cancelEdit = () => {
     setEditId(null);
     setForm(EMPTY);
+  };
+
+  const filteredModels = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter(m => m.name?.toLowerCase().includes(q));
+  }, [models, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredModels.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedModels = filteredModels.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+    setPage(1);
   };
 
   return (
@@ -109,12 +127,25 @@ const ModelManagement = () => {
         </form>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <input
+          value={search}
+          onChange={handleSearchChange}
+          placeholder="Modellerde ara..."
+          className="input-field text-sm pl-8 w-full"
+        />
+      </div>
+
       {/* List */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {models.length === 0 ? (
-          <p className="text-gray-500 text-sm col-span-full text-center py-8">Henüz model yok.</p>
+        {pagedModels.length === 0 ? (
+          <p className="text-gray-500 text-sm col-span-full text-center py-8">
+            {search ? 'Arama sonucu bulunamadı.' : 'Henüz model yok.'}
+          </p>
         ) : (
-          models.map((m) => (
+          pagedModels.map((m) => (
             <div key={m.id} className={`card p-4 flex items-center gap-3 ${!m.is_active ? 'opacity-50' : ''}`}>
               <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-dark-500 bg-primary-700/30">
                 {m.image_url ? (
@@ -161,6 +192,55 @@ const ModelManagement = () => {
           ))
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500 text-xs">
+            {filteredModels.length} model · Sayfa {currentPage}/{totalPages}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${i}`} className="px-1 text-gray-600">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`min-w-[30px] px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                      p === currentPage
+                        ? 'bg-primary text-white'
+                        : 'bg-dark-600 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

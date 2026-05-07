@@ -70,9 +70,9 @@ const HomePage = () => {
         {/* Stats */}
         <div className="absolute right-8 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-4">
           {[
-            { label: 'Aktif Video', value: `${activeVideos.length}+` },
-            { label: 'Toplam İzlenme', value: `${(activeVideos.reduce((a, b) => a + (b.view_count || 0), 0) / 1000).toFixed(1)}K` },
-            { label: 'VIP İçerik', value: `${activeVideos.filter(v => v.is_vip).length}+` },
+            { label: 'Aktif Video', value: `60.000+` },
+            { label: 'Toplam İzlenme', value: "10M+" },
+            { label: 'VIP İçerik', value: `60.000+` },
           ].map((s) => (
             <div key={s.label} className="text-right">
               <p className="text-2xl font-black text-white">{s.value}</p>
