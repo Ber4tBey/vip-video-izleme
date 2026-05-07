@@ -45,30 +45,26 @@ const formatBytes = (bytes) => {
 const ModelPickerPopup = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const ref = useRef(null)
 
   const selected = models.find(m => String(m.id) === String(value))
   const filtered = models.filter(m =>
     !search || m.name.toLowerCase().includes(search.toLowerCase())
   )
 
+  const close = () => { setOpen(false); setSearch('') }
+
   useEffect(() => {
     if (!open) return
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
-        setOpen(false)
-        setSearch('')
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const handler = (e) => { if (e.key === 'Escape') close() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
   }, [open])
 
   return (
-    <div className='relative' ref={ref}>
+    <>
       <button
         type='button'
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen(true)}
         className='input-field text-sm flex items-center justify-between gap-2 w-full'
       >
         <div className='flex items-center gap-2 min-w-0'>
@@ -105,54 +101,77 @@ const ModelPickerPopup = ({ models, value, onChange }) => {
       </button>
 
       {open && (
-        <div className='absolute z-50 mt-1 w-full min-w-[220px] bg-dark-700 border border-dark-500 rounded-lg shadow-xl'>
-          <div className='p-2 border-b border-dark-500'>
-            <div className='relative'>
-              <Search size={13} className='absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500' />
-              <input
-                autoFocus
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder='Model ara...'
-                className='w-full bg-dark-600 text-white text-xs rounded pl-8 pr-2 py-1.5 outline-none border border-dark-400 focus:border-primary'
-              />
-            </div>
-          </div>
-          <div className='max-h-52 overflow-y-auto'>
-            <button
-              type='button'
-              onClick={() => { onChange(''); setOpen(false); setSearch('') }}
-              className='w-full text-left px-3 py-2 text-gray-500 text-xs hover:bg-dark-600 transition-colors'
-            >
-              — Seçim yok —
-            </button>
-            {filtered.map(model => (
-              <button
-                key={model.id}
-                type='button'
-                onClick={() => { onChange(String(model.id)); setOpen(false); setSearch('') }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-dark-600 transition-colors ${
-                  String(model.id) === String(value) ? 'bg-primary/20 text-primary-300' : 'text-white'
-                }`}
-              >
-                <div className='w-6 h-6 rounded-full overflow-hidden bg-primary-700/30 flex-shrink-0 flex items-center justify-center'>
-                  {model.image_url ? (
-                    <img src={getMediaUrl(model.image_url)} alt={model.name} className='w-full h-full object-cover' />
-                  ) : (
-                    <span className='text-primary-400 font-bold text-xs'>{model.name.charAt(0)}</span>
-                  )}
-                </div>
-                <span className='truncate flex-1'>{model.name}</span>
-                {!model.is_active && <span className='text-gray-600 text-xs flex-shrink-0'>(pasif)</span>}
+        <div
+          className='fixed inset-0 z-50 flex items-center justify-center p-4'
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onMouseDown={e => { if (e.target === e.currentTarget) close() }}
+        >
+          <div className='bg-dark-700 border border-dark-500 rounded-xl shadow-2xl w-full max-w-sm flex flex-col' style={{ maxHeight: '70vh' }}>
+            {/* Header */}
+            <div className='flex items-center justify-between px-4 py-3 border-b border-dark-500'>
+              <span className='text-white text-sm font-semibold'>Model Seç</span>
+              <button type='button' onClick={close} className='text-gray-500 hover:text-white transition-colors'>
+                <X size={16} />
               </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className='text-gray-500 text-xs px-3 py-3 text-center'>Bulunamadı</p>
-            )}
+            </div>
+
+            {/* Search */}
+            <div className='p-3 border-b border-dark-500'>
+              <div className='relative'>
+                <Search size={14} className='absolute left-3 top-1/2 -translate-y-1/2 text-gray-500' />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder='Model ara...'
+                  className='w-full bg-dark-600 text-white text-sm rounded-lg pl-9 pr-3 py-2 outline-none border border-dark-400 focus:border-primary transition-colors'
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            <div className='overflow-y-auto flex-1'>
+              <button
+                type='button'
+                onClick={() => { onChange(''); close() }}
+                className='w-full flex items-center gap-3 px-4 py-2.5 text-gray-500 text-sm hover:bg-dark-600 transition-colors border-b border-dark-600'
+              >
+                <div className='w-8 h-8 rounded-full bg-dark-500 flex items-center justify-center flex-shrink-0'>
+                  <X size={14} />
+                </div>
+                Seçim yok
+              </button>
+              {filtered.map(model => (
+                <button
+                  key={model.id}
+                  type='button'
+                  onClick={() => { onChange(String(model.id)); close() }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-dark-600 transition-colors ${
+                    String(model.id) === String(value) ? 'bg-primary/20 text-primary-300' : 'text-white'
+                  }`}
+                >
+                  <div className='w-8 h-8 rounded-full overflow-hidden bg-primary-700/30 flex-shrink-0 flex items-center justify-center border border-dark-400'>
+                    {model.image_url ? (
+                      <img src={getMediaUrl(model.image_url)} alt={model.name} className='w-full h-full object-cover' />
+                    ) : (
+                      <span className='text-primary-400 font-bold text-sm'>{model.name.charAt(0)}</span>
+                    )}
+                  </div>
+                  <span className='truncate flex-1'>{model.name}</span>
+                  {!model.is_active && <span className='text-gray-600 text-xs flex-shrink-0'>pasif</span>}
+                  {String(model.id) === String(value) && (
+                    <span className='text-primary-400 text-xs flex-shrink-0'>✓</span>
+                  )}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className='text-gray-500 text-sm px-4 py-6 text-center'>Bulunamadı</p>
+              )}
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
