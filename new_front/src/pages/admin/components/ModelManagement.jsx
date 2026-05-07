@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Trash2, ToggleLeft, ToggleRight, Pencil, Save, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useVideo } from '../../../context/VideoContext';
 import FileUpload from '../../../components/ui/FileUpload';
@@ -7,7 +7,9 @@ import { getMediaUrl } from '../../../utils/api';
 const EMPTY = { name: '', description: '', file: null, previewUrl: '' };
 
 const ModelManagement = () => {
-  const { models, addModel, deleteModel, toggleModelActive, updateModel } = useVideo();
+  const { adminModels, fetchAdminModels, addModel, deleteModel, toggleModelActive, updateModel } = useVideo();
+
+  useEffect(() => { fetchAdminModels(); }, [fetchAdminModels]);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
@@ -52,9 +54,9 @@ const ModelManagement = () => {
 
   const filteredModels = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return models;
-    return models.filter(m => m.name?.toLowerCase().includes(q));
-  }, [models, search]);
+    if (!q) return adminModels;
+    return adminModels.filter(m => m.name?.toLowerCase().includes(q));
+  }, [adminModels, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredModels.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);

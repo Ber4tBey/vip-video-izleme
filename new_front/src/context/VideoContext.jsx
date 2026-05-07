@@ -8,6 +8,7 @@ export const VideoProvider = ({ children }) => {
   const [videos, setVideos] = useState([]);
   const [adminVideos, setAdminVideos] = useState([]);
   const [models, setModels] = useState([]);
+  const [adminModels, setAdminModels] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef(null);
@@ -36,6 +37,18 @@ export const VideoProvider = ({ children }) => {
       return vids;
     } catch (e) {
       console.error('fetchAdminVideos error', e);
+      return [];
+    }
+  }, []);
+
+  const fetchAdminModels = useCallback(async () => {
+    try {
+      const res = await api.get('/models/all');
+      const list = res.models || res;
+      setAdminModels(list);
+      return list;
+    } catch (e) {
+      console.error('fetchAdminModels error', e);
       return [];
     }
   }, []);
@@ -123,23 +136,29 @@ export const VideoProvider = ({ children }) => {
   const addModel = async (formData) => {
     const m = await api.upload('/models', formData);
     setModels((prev) => [...prev, m]);
+    setAdminModels((prev) => [...prev, m]);
     return m;
   };
 
   const updateModel = async (id, formData) => {
     const m = await api.uploadPut(`/models/${id}`, formData);
     setModels((prev) => prev.map((x) => (x.id === id ? m : x)));
+    setAdminModels((prev) => prev.map((x) => (x.id === id ? m : x)));
     return m;
   };
 
   const deleteModel = async (id) => {
     await api.delete(`/models/${id}`);
     setModels((prev) => prev.filter((x) => x.id !== id));
+    setAdminModels((prev) => prev.filter((x) => x.id !== id));
   };
 
   const toggleModelActive = async (id) => {
     await api.patch(`/models/${id}/toggle`);
     setModels((prev) =>
+      prev.map((x) => (x.id === id ? { ...x, is_active: x.is_active ? 0 : 1 } : x))
+    );
+    setAdminModels((prev) =>
       prev.map((x) => (x.id === id ? { ...x, is_active: x.is_active ? 0 : 1 } : x))
     );
   };
@@ -172,7 +191,7 @@ export const VideoProvider = ({ children }) => {
   return (
     <VideoContext.Provider value={{
       loading,
-      videos, adminVideos, models, categories,
+      videos, adminVideos, models, adminModels, categories,
       activeVideos, activeModels, activeCategories,
       trendingVideos,
       addVideo, addVideoWithProgress, updateVideo, deleteVideo, toggleVideoActive, incrementViewCount,
@@ -180,6 +199,7 @@ export const VideoProvider = ({ children }) => {
       addCategory, updateCategory, deleteCategory, toggleCategoryActive,
       refetch: fetchAll,
       fetchAdminVideos,
+      fetchAdminModels,
     }}>
       {children}
     </VideoContext.Provider>

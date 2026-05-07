@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Plus,
   Pencil,
@@ -11,7 +11,8 @@ import {
   HardDrive,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react'
 import { useVideo } from '../../../context/VideoContext'
 import VideoThumbnail from '../../../components/ui/VideoThumbnail'
@@ -41,10 +42,125 @@ const formatBytes = (bytes) => {
   return (bytes / 1024).toFixed(1) + ' KB';
 };
 
+const ModelPickerPopup = ({ models, value, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef(null)
+
+  const selected = models.find(m => String(m.id) === String(value))
+  const filtered = models.filter(m =>
+    !search || m.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div className='relative' ref={ref}>
+      <button
+        type='button'
+        onClick={() => setOpen(o => !o)}
+        className='input-field text-sm flex items-center justify-between gap-2 w-full'
+      >
+        <div className='flex items-center gap-2 min-w-0'>
+          {selected ? (
+            <>
+              <div className='w-5 h-5 rounded-full overflow-hidden bg-primary-700/30 flex-shrink-0 flex items-center justify-center'>
+                {selected.image_url ? (
+                  <img src={getMediaUrl(selected.image_url)} alt={selected.name} className='w-full h-full object-cover' />
+                ) : (
+                  <span className='text-primary-400 font-bold text-xs'>{selected.name.charAt(0)}</span>
+                )}
+              </div>
+              <span className='text-white truncate'>{selected.name}</span>
+              {!selected.is_active && <span className='text-gray-500 text-xs flex-shrink-0'>(pasif)</span>}
+            </>
+          ) : (
+            <span className='text-gray-500'>Seçiniz</span>
+          )}
+        </div>
+        <div className='flex items-center gap-1 flex-shrink-0'>
+          {selected && (
+            <span
+              role='button'
+              tabIndex={0}
+              onClick={e => { e.stopPropagation(); onChange('') }}
+              onKeyDown={e => e.key === 'Enter' && (e.stopPropagation(), onChange(''))}
+              className='text-gray-500 hover:text-white p-0.5 rounded'
+            >
+              <X size={12} />
+            </span>
+          )}
+          <ChevronDown size={14} className='text-gray-500' />
+        </div>
+      </button>
+
+      {open && (
+        <div className='absolute z-50 mt-1 w-full min-w-[220px] bg-dark-700 border border-dark-500 rounded-lg shadow-xl'>
+          <div className='p-2 border-b border-dark-500'>
+            <div className='relative'>
+              <Search size={13} className='absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500' />
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder='Model ara...'
+                className='w-full bg-dark-600 text-white text-xs rounded pl-8 pr-2 py-1.5 outline-none border border-dark-400 focus:border-primary'
+              />
+            </div>
+          </div>
+          <div className='max-h-52 overflow-y-auto'>
+            <button
+              type='button'
+              onClick={() => { onChange(''); setOpen(false); setSearch('') }}
+              className='w-full text-left px-3 py-2 text-gray-500 text-xs hover:bg-dark-600 transition-colors'
+            >
+              — Seçim yok —
+            </button>
+            {filtered.map(model => (
+              <button
+                key={model.id}
+                type='button'
+                onClick={() => { onChange(String(model.id)); setOpen(false); setSearch('') }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-dark-600 transition-colors ${
+                  String(model.id) === String(value) ? 'bg-primary/20 text-primary-300' : 'text-white'
+                }`}
+              >
+                <div className='w-6 h-6 rounded-full overflow-hidden bg-primary-700/30 flex-shrink-0 flex items-center justify-center'>
+                  {model.image_url ? (
+                    <img src={getMediaUrl(model.image_url)} alt={model.name} className='w-full h-full object-cover' />
+                  ) : (
+                    <span className='text-primary-400 font-bold text-xs'>{model.name.charAt(0)}</span>
+                  )}
+                </div>
+                <span className='truncate flex-1'>{model.name}</span>
+                {!model.is_active && <span className='text-gray-600 text-xs flex-shrink-0'>(pasif)</span>}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className='text-gray-500 text-xs px-3 py-3 text-center'>Bulunamadı</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const VideoManagement = () => {
   const {
     adminVideos,
-    models,
+    adminModels,
+    fetchAdminModels,
     categories,
     addVideo,
     updateVideo,
@@ -52,6 +168,8 @@ const VideoManagement = () => {
     toggleVideoActive,
     fetchAdminVideos,
   } = useVideo()
+
+  useEffect(() => { fetchAdminModels(); }, [fetchAdminModels])
 
   useEffect(() => { fetchAdminVideos(); }, [fetchAdminVideos])
 
@@ -185,7 +303,7 @@ const VideoManagement = () => {
   }
 
   const allCategories = categories
-  const allModels = models
+  const allModels = adminModels
 
   const filteredVideos = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -327,20 +445,13 @@ const VideoManagement = () => {
               </div>
               <div>
                 <label className='block text-xs text-gray-400 mb-1'>
-                  Model (istege bagli)
+                  Model (isteğe bağlı)
                 </label>
-                <select
+                <ModelPickerPopup
+                  models={allModels}
                   value={form.modelId}
-                  onChange={e => setForm({ ...form, modelId: e.target.value })}
-                  className='input-field text-sm'
-                >
-                  <option value=''>Seciniz</option>
-                  {allModels.map(model => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={modelId => setForm({ ...form, modelId })}
+                />
               </div>
             </div>
 

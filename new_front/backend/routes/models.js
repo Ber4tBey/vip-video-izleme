@@ -75,6 +75,29 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/models/all (admin) — all models without is_active filter
+router.get('/all', adminOnly, async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    let whereClause = '';
+    const params = [];
+
+    if (search) {
+      whereClause = `WHERE name ILIKE $1`;
+      params.push(`%${search}%`);
+    }
+
+    const { rows } = await db.query(
+      `SELECT * FROM models ${whereClause} ORDER BY name`,
+      params
+    );
+
+    res.json({ models: rows, total: rows.length });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/models/:slug — single model by slug
 router.get('/:slug', async (req, res) => {
   try {
